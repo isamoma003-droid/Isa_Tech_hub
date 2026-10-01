@@ -84,6 +84,11 @@ export default function PlatformPage() {
             <Link to={`/payments?platform=${platform.id}`} className="btn btn-ghost">
               Payments
             </Link>
+            {platform.till && (
+              <Link to={`/tills/${platform.till.id}`} className="btn btn-ghost">
+                Till
+              </Link>
+            )}
             <Link to={`/audit?target=${platform.id}`} className="btn btn-ghost">
               History
             </Link>

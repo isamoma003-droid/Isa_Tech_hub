@@ -570,6 +570,70 @@ describe('ISA Tech Hub API', { skip: !uri && 'set MONGODB_URI_TEST to run the AP
     assert.equal(adopted.till.shortcode, '700333');
     assert.equal((await Till.findById(created.till._id)).source, 'env');
     assert.equal(await Till.countDocuments(), tillsBefore);
+
+    // A correction made in the dashboard survives restarts; a variable changed later still applies.
+    const latestVars = { ...tillVars, MPESA_PASSKEY: 'passkey-2', MPESA_TILL_NUMBER: '8885678', MPESA_SHORTCODE: '700333' };
+    const fixed = await request('PATCH', `/api/admin/tills/${created.till.id}`, {
+      token: adminToken,
+      body: { password: 'correct horse battery', tillNumber: '8889999' },
+    });
+    assert.equal(fixed.status, 200);
+    assert.equal((await syncTillFromEnv(latestVars)).action, 'unchanged');
+    assert.equal((await Till.findById(created.till._id)).tillNumber, '8889999', 'a restart does not undo the dashboard');
+    const rotated = await syncTillFromEnv({ ...latestVars, MPESA_PASSKEY: 'passkey-3' });
+    assert.deepEqual(rotated.changed, ['passkey']);
+    const after = await Till.findById(created.till._id).select('+consumerKey +consumerSecret +passkey');
+    assert.equal(after.tillNumber, '8889999');
+    assert.equal(after.credentials().passkey, 'passkey-3');
+  });
+
+  test('admins can correct a till from the dashboard, with their password', async () => {
+    const path = `/api/admin/tills/${till.id}`;
+    const body = { password: 'correct horse battery', shortcode: '600222', tillNumber: '5559999' };
+
+    const shown = await request('GET', path, { token: viewerToken });
+    assert.equal(shown.body.till.payNumber, '5551234');
+    assert.deepEqual(shown.body.till.platformList.map((p) => p.slug), ['a-read', 'egertickets']);
+    assert.equal(shown.body.till.consumerKeyHint, '…ck');
+
+    assert.equal((await request('PATCH', path, { token: viewerToken, body })).status, 403);
+    assert.equal((await request('PATCH', path, { token: adminToken, body: { shortcode: '600222' } })).status, 400);
+    const wrong = await request('PATCH', path, { token: adminToken, body: { ...body, password: 'nope' } });
+    assert.equal(wrong.status, 403);
+    assert.equal((await Till.findById(till._id)).tillNumber, '5551234', 'nothing changes without the password');
+    assert.equal((await request('PATCH', path, { token: adminToken, body: { ...body, shortcode: 'abc' } })).status, 400);
+
+    const saved = await request('PATCH', path, { token: adminToken, body: { ...body, passkey: 'new-passkey' } });
+    assert.equal(saved.status, 200);
+    assert.equal(saved.body.till.payNumber, '5559999');
+    assert.deepEqual(saved.body.changed.sort(), ['credentials', 'shortcode', 'tillNumber']);
+    assert.ok(!JSON.stringify(saved.body).includes('new-passkey'), 'keys are never sent back');
+    const entry = await AuditLog.findOne({ action: 'till.numbers_changed', 'target.id': till.id }).sort({ createdAt: -1 });
+    assert.deepEqual(entry.details.tillNumber, { from: '5551234', to: '5559999' });
+    assert.deepEqual(entry.details.credentials, ['passkey']);
+
+    // The next prompt uses the corrected numbers and passkey.
+    await pay({ phone: nextPhone(), amount: 10, reference: 'after-fix' });
+    const sent = daraja.pushes[0].body;
+    assert.equal(sent.BusinessShortCode, '600222');
+    assert.equal(sent.PartyB, '5559999');
+    assert.equal(sent.Password, Buffer.from(`600222new-passkey${sent.Timestamp}`).toString('base64'));
+
+    // A Paybill has no till number; a Buy Goods till must have one.
+    assert.equal((await request('PATCH', path, { token: adminToken, body: { password: body.password, kind: 'till', tillNumber: '' } })).status, 400);
+    const paybill = await request('PATCH', path, { token: adminToken, body: { password: body.password, kind: 'paybill' } });
+    assert.equal(paybill.body.till.kind, 'paybill');
+    assert.equal(paybill.body.till.tillNumber, null);
+    assert.equal(paybill.body.till.payNumber, '600222');
+
+    const check = await request('POST', `${path}/check`, { token: adminToken });
+    assert.equal(check.body.ok, true);
+
+    const restored = await request('PATCH', path, {
+      token: adminToken,
+      body: { password: body.password, kind: 'till', shortcode: '600111', tillNumber: '5551234', passkey: 'the-passkey' },
+    });
+    assert.equal(restored.body.till.payNumber, '5551234');
   });
 
   test('changing your password signs out other sessions', async () => {

@@ -22,6 +22,7 @@ export const usePayment = (id) =>
 export const usePlatforms = () => useQuery({ queryKey: ['platforms'], queryFn: () => api('/platforms') });
 export const usePlatform = (id) => useQuery({ queryKey: ['platform', id], queryFn: () => api(`/platforms/${id}`) });
 export const useTills = () => useQuery({ queryKey: ['tills'], queryFn: () => api('/tills') });
+export const useTill = (id) => useQuery({ queryKey: ['till', id], queryFn: () => api(`/tills/${id}`) });
 export const useAudit = (filters) =>
   useQuery({ queryKey: ['audit', filters], queryFn: () => api(`/audit${queryString(filters)}`), placeholderData: keepPreviousData });
 

@@ -29,6 +29,10 @@ export const randomToken = (bytes = 32) => crypto.randomBytes(bytes).toString('b
 
 export const sha256 = (text) => crypto.createHash('sha256').update(String(text)).digest('hex');
 
+// A keyed fingerprint: tells whether a secret changed without storing anything that could be
+// checked against guesses by someone holding only the database.
+export const fingerprint = (value) => crypto.createHmac('sha256', key()).update(String(value ?? '')).digest('hex');
+
 export function safeEqual(a, b) {
   const left = Buffer.from(String(a ?? ''));
   const right = Buffer.from(String(b ?? ''));

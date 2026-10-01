@@ -11,6 +11,7 @@ import PaymentPage from './pages/PaymentPage.jsx';
 import PaymentsPage from './pages/PaymentsPage.jsx';
 import PlatformPage from './pages/PlatformPage.jsx';
 import PlatformsPage from './pages/PlatformsPage.jsx';
+import TillPage from './pages/TillPage.jsx';
 import TillsPage from './pages/TillsPage.jsx';
 
 function RequireAdmin({ children }) {
@@ -39,6 +40,7 @@ export default function App() {
         <Route path="platforms/new" element={<NewPlatformPage />} />
         <Route path="platforms/:id" element={<PlatformPage />} />
         <Route path="tills" element={<TillsPage />} />
+        <Route path="tills/:id" element={<TillPage />} />
         <Route path="audit" element={<AuditPage />} />
         <Route path="account" element={<AccountPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

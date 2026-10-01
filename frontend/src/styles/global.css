@@ -479,6 +479,29 @@ p.alert {
   background: var(--accent-wash);
   display: block;
 }
+.notice-warn {
+  background: var(--warn-wash);
+}
+.notice-warn svg {
+  color: var(--warning);
+  flex: none;
+  margin-top: 2px;
+}
+.notice-warn p {
+  margin: 0;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 0.92rem;
+}
+.check input {
+  width: auto;
+  min-height: 0;
+}
 
 .empty {
   padding: 32px 16px;
@@ -619,6 +642,9 @@ fieldset {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 14px 16px;
+}
+.form-grid + .form-grid {
+  margin-top: 14px;
 }
 .form-actions {
   display: flex;

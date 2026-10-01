@@ -5,9 +5,9 @@ const { Schema } = mongoose;
 
 // Where money lands: one M-Pesa till (Buy Goods) or Paybill, with its Daraja credentials.
 // Platforms point at a till, so several platforms can share one, and a partner can bring
-// their own. Tills are set up on the server only (MPESA_* environment variables, or
-// scripts/till.js), never from the dashboard: a stolen dashboard password must not be able to
-// send customers' money elsewhere.
+// their own. Tills come from the MPESA_* variables on the host or scripts/till.js. Admins can
+// correct them in the dashboard, which asks for their password again and audits every change,
+// because these numbers decide where customers' money goes.
 const tillSchema = new Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: 60 },
@@ -24,8 +24,11 @@ const tillSchema = new Schema(
     // Makes this till's callback URL unguessable, so strangers can't post fake results.
     callbackSecret: { type: String, select: false, default: () => randomToken(24) },
     active: { type: Boolean, default: true },
-    // env: managed by the MPESA_* variables on the host (one till). cli: added with scripts/till.js.
+    // env: created from the MPESA_* variables on the host (one till). cli: added with scripts/till.js.
     source: { type: String, enum: ['env', 'cli'] },
+    // The MPESA_* values last applied to this till (secrets as fingerprints). On start-up only the
+    // variables that changed since are applied, so edits made in the dashboard aren't undone.
+    envApplied: { type: Schema.Types.Mixed, select: false },
   },
   { timestamps: true },
 );
@@ -64,6 +67,7 @@ tillSchema.methods.toPublic = function toPublic() {
     tillNumber: this.tillNumber || null,
     payNumber: this.payNumber,
     active: this.active,
+    source: this.source || null,
     createdAt: this.createdAt,
   };
 };

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useTills } from '../api/queries.js';
 import { ErrorMessage, Field } from './ui.jsx';
 
@@ -86,7 +87,16 @@ export default function PlatformForm({ initial, submitLabel, onSubmit, busy, err
           </Field>
           <Field
             label="Till"
-            hint={selectedTill ? `Customers pay ${selectedTill.kind === 'till' ? 'till' : 'Paybill'} ${selectedTill.payNumber} (${selectedTill.environment}).` : 'Where this platform\'s money lands.'}
+            hint={
+              selectedTill ? (
+                <>
+                  Customers pay {selectedTill.kind === 'till' ? 'till' : 'Paybill'} {selectedTill.payNumber} ({selectedTill.environment}).{' '}
+                  <Link to={`/tills/${selectedTill.id}`}>Till details</Link>
+                </>
+              ) : (
+                "Where this platform's money lands."
+              )
+            }
             error={fieldError('till')}
           >
             <select value={form.till} onChange={set('till')} required>
