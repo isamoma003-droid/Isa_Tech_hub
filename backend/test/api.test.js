@@ -551,6 +551,25 @@ describe('ISA Tech Hub API', { skip: !uri && 'set MONGODB_URI_TEST to run the AP
     const stored = await Till.findById(created.till._id).select('+consumerKey +consumerSecret +passkey');
     assert.equal(stored.credentials().passkey, 'passkey-2');
     assert.ok(await AuditLog.exists({ action: 'till.credentials_changed', 'target.id': created.till.id }));
+
+    // Correcting a number fixes the same till (platforms keep pointing at it), never adds a second one.
+    const tillsBefore = await Till.countDocuments();
+    const corrected = await syncTillFromEnv({ ...tillVars, MPESA_PASSKEY: 'passkey-2', MPESA_TILL_NUMBER: '8885678' });
+    assert.equal(corrected.action, 'updated');
+    assert.equal(corrected.till.id, created.till.id);
+    assert.equal(corrected.till.payNumber, '8885678');
+    assert.deepEqual(corrected.changed, ['tillNumber']);
+    assert.equal(await Till.countDocuments(), tillsBefore);
+    const entry = await AuditLog.findOne({ action: 'till.updated', 'target.id': created.till.id });
+    assert.deepEqual(entry.details.tillNumber, { from: '8881234', to: '8885678' });
+
+    // A till created from the variables before tills were marked is recognised from the audit log.
+    await Till.collection.updateOne({ _id: created.till._id }, { $unset: { source: '' } });
+    const adopted = await syncTillFromEnv({ ...tillVars, MPESA_PASSKEY: 'passkey-2', MPESA_TILL_NUMBER: '8885678', MPESA_SHORTCODE: '700333' });
+    assert.equal(adopted.till.id, created.till.id);
+    assert.equal(adopted.till.shortcode, '700333');
+    assert.equal((await Till.findById(created.till._id)).source, 'env');
+    assert.equal(await Till.countDocuments(), tillsBefore);
   });
 
   test('changing your password signs out other sessions', async () => {

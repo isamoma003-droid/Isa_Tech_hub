@@ -57,6 +57,7 @@ async function add() {
       ? { name: opts.name, kind: 'paybill', environment: 'sandbox', shortcode: SANDBOX.shortcode }
       : { name: opts.name, kind: opts.kind, environment: opts.env, shortcode: opts.shortcode, tillNumber: opts.till },
   );
+  till.source = 'cli';
   if (opts.sandbox) creds.passkey ||= SANDBOX.passkey;
   if (!opts.sandbox && !['till', 'paybill'].includes(opts.kind)) fail('--kind must be "till" (Buy Goods) or "paybill"');
   if (!opts.sandbox && !['sandbox', 'production'].includes(opts.env)) fail('--env must be "sandbox" or "production"');
