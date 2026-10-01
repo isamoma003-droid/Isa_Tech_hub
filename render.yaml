@@ -1,0 +1,51 @@
+# Render Blueprint for the Hub API (backend/). In Render: New → Blueprint → choose this repo.
+# Render asks for every value marked `sync: false` while creating the service.
+services:
+  - type: web
+    name: isa-tech-hub-api
+    runtime: node
+    rootDir: backend
+    # Always on. A sleeping server misses Safaricom's payment callbacks and the 30-second
+    # status sweep that recovers them, so don't use the free plan for the live till.
+    plan: starter
+    # Render's closest region to Kenya.
+    region: frankfurt
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      # A database just for the Hub, e.g. your Atlas cluster with /isa-tech-hub as the database name.
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      # Encrypts the till credentials. Render generates it; copy it somewhere safe as well.
+      - key: HUB_SECRET_KEY
+        generateValue: true
+      # The dashboard's address on Vercel, e.g. https://isa-tech-hub.vercel.app
+      - key: CLIENT_ORIGIN
+        sync: false
+      # Your first dashboard sign-in, created on first start. Delete the password after signing in.
+      - key: BOOTSTRAP_ADMIN_EMAIL
+        sync: false
+      - key: BOOTSTRAP_ADMIN_PASSWORD
+        sync: false
+      # The ISA till. Same values egertickets uses: MPESA_SHORTCODE = its MPESA_SHORTCODE (store /
+      # head office number), MPESA_TILL_NUMBER = its MPESA_STORE_NUMBER (the till customers pay).
+      - key: MPESA_ENV
+        value: production
+      - key: MPESA_SHORTCODE
+        sync: false
+      - key: MPESA_TILL_NUMBER
+        sync: false
+      - key: MPESA_CONSUMER_KEY
+        sync: false
+      - key: MPESA_CONSUMER_SECRET
+        sync: false
+      - key: MPESA_PASSKEY
+        sync: false
