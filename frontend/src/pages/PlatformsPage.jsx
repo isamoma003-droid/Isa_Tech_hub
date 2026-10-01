@@ -1,0 +1,75 @@
+import { Link } from 'react-router-dom';
+import { AlertTriangle, Plus } from 'lucide-react';
+import { usePlatforms } from '../api/queries.js';
+import { Empty, ErrorMessage, PageHeader, Spinner, StatusBadge } from '../components/ui.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
+import { formatKes, formatNumber, timeAgo } from '../utils/format.js';
+
+export default function PlatformsPage() {
+  const { canEdit } = useAuth();
+  const { data, isPending, error } = usePlatforms();
+
+  return (
+    <>
+      <PageHeader
+        title="Platforms"
+        subtitle="Sites and apps that take payments through the Hub."
+        actions={
+          canEdit && (
+            <Link to="/platforms/new" className="btn btn-primary">
+              <Plus size={16} aria-hidden="true" /> Add platform
+            </Link>
+          )
+        }
+      />
+      {isPending ? (
+        <Spinner />
+      ) : error ? (
+        <ErrorMessage error={error} />
+      ) : data.platforms.length ? (
+        <div className="platform-grid">
+          {data.platforms.map((p) => (
+            <Link key={p.id} to={`/platforms/${p.id}`} className="card platform-card">
+              <div className="card-head">
+                <h2>{p.name}</h2>
+                <StatusBadge status={p.status} />
+              </div>
+              <p className="muted small mono">
+                {p.slug} · {p.ownership === 'partner' ? 'partner' : 'ours'}
+              </p>
+              <p className="platform-money">
+                {formatKes(p.stats.month.amount)}
+                <small>
+                  {formatNumber(p.stats.month.count)} paid in 30 days
+                </small>
+              </p>
+              <dl className="kv kv-tight">
+                <div className="kv-row">
+                  <dt>Till</dt>
+                  <dd>{p.till ? `${p.till.name} (${p.till.payNumber})` : '—'}</dd>
+                </div>
+                <div className="kv-row">
+                  <dt>Last payment</dt>
+                  <dd>{timeAgo(p.stats.lastPaymentAt)}</dd>
+                </div>
+                <div className="kv-row">
+                  <dt>Webhook</dt>
+                  <dd>{p.webhookUrl ? new URL(p.webhookUrl).host : 'not set'}</dd>
+                </div>
+              </dl>
+              {p.stats.failedWebhooks > 0 && (
+                <p className="alert alert-warn">
+                  <AlertTriangle size={16} aria-hidden="true" /> {p.stats.failedWebhooks} webhook{p.stats.failedWebhooks === 1 ? '' : 's'} gave up
+                </p>
+              )}
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <Empty title="No platforms yet">
+          {canEdit ? 'Add egertickets, A-Read or a partner to start taking payments.' : 'An admin can add the first platform.'}
+        </Empty>
+      )}
+    </>
+  );
+}
