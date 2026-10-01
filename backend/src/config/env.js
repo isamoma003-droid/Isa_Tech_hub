@@ -39,8 +39,9 @@ export const env = {
   // so keep it safe and never rotate it without re-entering the till credentials.
   secretKey: isTest ? 'test-secret-key' : required('HUB_SECRET_KEY'),
   // Public HTTPS address of this API. Safaricom posts payment results to
-  // <PUBLIC_URL>/mpesa/callback/<till id>/<till secret>.
-  publicUrl: (process.env.PUBLIC_URL || `http://localhost:${number('PORT', 5100)}`).replace(/\/$/, ''),
+  // <PUBLIC_URL>/mpesa/callback/<till id>/<till secret>. On Render it defaults to the service's
+  // own address (RENDER_EXTERNAL_URL); set PUBLIC_URL when you add a custom domain.
+  publicUrl: (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${number('PORT', 5100)}`).replace(/\/$/, ''),
   // Dashboard origins allowed to call /api/admin (not needed when SERVE_CLIENT=true).
   clientOrigins: list('CLIENT_ORIGIN').length ? list('CLIENT_ORIGIN') : ['http://localhost:5173'],
   minAmount: number('MIN_AMOUNT', 1),

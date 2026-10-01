@@ -9,8 +9,9 @@ export default function TillsPage() {
     <>
       <PageHeader title="Tills" subtitle="Where the money lands. Platforms point at a till; several can share one." />
       <div className="notice notice-info">
-        Tills and their Daraja credentials are added and changed from the server only (<code>npm run till -- add</code>), never from this
-        dashboard. A stolen dashboard password therefore can't send customers' money to a different till.
+        Tills and their Daraja credentials are set on the server only: the <code>MPESA_*</code> environment variables on Render (applied when
+        the server starts), or <code>npm run till</code> for extra tills. Never from this dashboard, so a stolen dashboard password can't send
+        customers' money to a different till.
       </div>
       {isPending ? (
         <Spinner />
@@ -59,8 +60,8 @@ export default function TillsPage() {
         </div>
       ) : (
         <Empty title="No tills yet">
-          On the server, run <code>npm run till -- add --name "ISA main till" --kind till --env production --shortcode &lt;store number&gt; --till &lt;till number&gt;</code>{' '}
-          with the Daraja credentials in the environment (see the README).
+          On Render, set <code>MPESA_ENV</code>, <code>MPESA_SHORTCODE</code>, <code>MPESA_TILL_NUMBER</code>, <code>MPESA_CONSUMER_KEY</code>,{' '}
+          <code>MPESA_CONSUMER_SECRET</code> and <code>MPESA_PASSKEY</code>, then redeploy. The till appears here once the server restarts.
         </Empty>
       )}
     </>

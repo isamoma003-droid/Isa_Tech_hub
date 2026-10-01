@@ -110,7 +110,7 @@ export default function PlatformForm({ initial, submitLabel, onSubmit, busy, err
           hint="The Hub posts payment.paid, payment.failed and payment.disputed here, signed with the platform's webhook secret."
           error={fieldError('webhookUrl')}
         >
-          <input type="url" value={form.webhookUrl} onChange={set('webhookUrl')} placeholder="https://api.a-read.example/api/hub/webhook" />
+          <input type="url" value={form.webhookUrl} onChange={set('webhookUrl')} placeholder="https://api.a-read.example/api/payments/hub-webhook" />
         </Field>
         <div className="form-grid">
           <Field label="Contact name">

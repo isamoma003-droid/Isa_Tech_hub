@@ -15,6 +15,7 @@ import { Payment } from '../src/models/Payment.js';
 import { Till } from '../src/models/Till.js';
 import { WebhookDelivery } from '../src/models/WebhookDelivery.js';
 import { callbacksIdle } from '../src/routes/mpesa.js';
+import { bootstrapAdmin, syncTillFromEnv } from '../src/services/bootstrap.js';
 import { setDarajaTransport } from '../src/services/daraja.js';
 import { sweepPendingPayments } from '../src/services/payments.js';
 import { deliverDueWebhooks } from '../src/services/webhooks.js';
@@ -518,6 +519,38 @@ describe('ISA Tech Hub API', { skip: !uri && 'set MONGODB_URI_TEST to run the AP
     assert.equal(event.type, 'payment.paid');
     assert.equal(event.data.payment.receipt, 'TJ1SDK0001');
     assert.throws(() => verifyWebhook({ secret: 'whsec_wrong', rawBody: received[0].body, signature: received[0].headers['isa-signature'] }));
+  });
+
+  test('the first admin and the till can come from environment variables', async () => {
+    const vars = { BOOTSTRAP_ADMIN_EMAIL: 'Boss@ISA.test', BOOTSTRAP_ADMIN_PASSWORD: 'a long first password', BOOTSTRAP_ADMIN_NAME: 'Boss' };
+    const admin = await bootstrapAdmin(vars);
+    assert.equal(admin.email, 'boss@isa.test');
+    assert.equal(await bootstrapAdmin(vars), null, 'only once');
+    assert.equal(await bootstrapAdmin({ BOOTSTRAP_ADMIN_EMAIL: 'x@isa.test', BOOTSTRAP_ADMIN_PASSWORD: 'short' }), null);
+    const login = await request('POST', '/api/admin/auth/login', { body: { email: 'boss@isa.test', password: 'a long first password' } });
+    assert.equal(login.status, 200);
+
+    const tillVars = {
+      MPESA_ENV: 'production',
+      MPESA_SHORTCODE: '700222',
+      MPESA_TILL_NUMBER: '8881234',
+      MPESA_CONSUMER_KEY: 'key-1',
+      MPESA_CONSUMER_SECRET: 'secret-1',
+      MPESA_PASSKEY: 'passkey-1',
+    };
+    assert.equal(await syncTillFromEnv({ MPESA_SHORTCODE: '700222' }), null, 'needs all the credentials');
+    const created = await syncTillFromEnv(tillVars);
+    assert.equal(created.action, 'created');
+    assert.equal(created.till.kind, 'till');
+    assert.equal(created.till.payNumber, '8881234');
+    assert.equal((await syncTillFromEnv(tillVars)).action, 'unchanged');
+
+    const updated = await syncTillFromEnv({ ...tillVars, MPESA_PASSKEY: 'passkey-2' });
+    assert.equal(updated.action, 'updated');
+    assert.equal(updated.till.id, created.till.id);
+    const stored = await Till.findById(created.till._id).select('+consumerKey +consumerSecret +passkey');
+    assert.equal(stored.credentials().passkey, 'passkey-2');
+    assert.ok(await AuditLog.exists({ action: 'till.credentials_changed', 'target.id': created.till.id }));
   });
 
   test('changing your password signs out other sessions', async () => {

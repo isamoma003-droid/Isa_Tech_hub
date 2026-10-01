@@ -5,8 +5,9 @@ const { Schema } = mongoose;
 
 // Where money lands: one M-Pesa till (Buy Goods) or Paybill, with its Daraja credentials.
 // Platforms point at a till, so several platforms can share one, and a partner can bring
-// their own. Tills are added from the command line only (scripts/till.js), never from the
-// dashboard: a stolen dashboard password must not be able to send customers' money elsewhere.
+// their own. Tills are set up on the server only (MPESA_* environment variables, or
+// scripts/till.js), never from the dashboard: a stolen dashboard password must not be able to
+// send customers' money elsewhere.
 const tillSchema = new Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: 60 },

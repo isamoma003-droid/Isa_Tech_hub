@@ -53,61 +53,91 @@ backend/src/
 backend/scripts/        admin.js (dashboard accounts), till.js (tills and Daraja credentials)
 ```
 
+## Deploy: API on Render, dashboard on Vercel
+
+| | Where | Folder | Address (example) |
+| --- | --- | --- | --- |
+| Hub API | Render, Starter plan (always on) | `backend/` | `https://isa-tech-hub-api.onrender.com` |
+| Dashboard | Vercel | `frontend/` | `https://isa-tech-hub.vercel.app` |
+| Database | MongoDB Atlas | | a new database, e.g. `isa-tech-hub` |
+
+Render and Vercel build from `main` unless you pick another branch, so merge this code into `main` first.
+
+1. **Database.** In Atlas, reuse a cluster (A-Read's is fine) with a new database name. Copy the connection string ending in `/isa-tech-hub`, and allow Render to connect under Network Access (`0.0.0.0/0`, or Render's outbound IPs).
+2. **API on Render.** Go to **New → Blueprint**, pick this repo, and Render reads `render.yaml`. It generates `JWT_SECRET` and `HUB_SECRET_KEY`; copy `HUB_SECRET_KEY` somewhere safe as well. It asks for:
+   - `MONGODB_URI`: the string from step 1.
+   - `CLIENT_ORIGIN`: the Vercel address from step 3 (put a placeholder for now and fix it in step 4).
+   - `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD`: your first dashboard sign-in (10+ characters).
+   - The till: `MPESA_SHORTCODE`, `MPESA_TILL_NUMBER`, `MPESA_CONSUMER_KEY`, `MPESA_CONSUMER_SECRET`, `MPESA_PASSKEY`. These are the same values egertickets already has: its `MPESA_SHORTCODE` (the store / head office number) and its `MPESA_STORE_NUMBER` (the till customers pay). `MPESA_ENV` is preset to `production`.
+
+   On the first start the log says *Created dashboard admin …* and *Added production till …*. Check that `https://<service>.onrender.com/health` answers `{"ok":true}`. Safaricom's callback address is the service's own `https://…onrender.com`, so nothing needs registering with Safaricom.
+3. **Dashboard on Vercel.** Go to **Add New → Project**, import this repo, and set **Root Directory** to `frontend` (`frontend/vercel.json` sets Vite, the build and the routing). Add the environment variable `VITE_API_URL` = `https://<service>.onrender.com/api`, then deploy.
+   *Repo already linked to a Vercel project from the Next.js starter?* Change that project's Root Directory to `frontend` and add the same variable.
+4. **Connect the two.** On Render, set `CLIENT_ORIGIN` to the exact Vercel address (no trailing slash; separate several with commas) and redeploy.
+5. **Sign in** at the Vercel address. Change your password under **Account**, then delete `BOOTSTRAP_ADMIN_PASSWORD` on Render. **Tills** should show "ISA main till" with credentials set.
+6. **Add the platforms and try a real KES 1 payment** (see [Connecting a platform](#connecting-a-platform)).
+
+**Notes**
+- **Changing the till later.** Edit the `MPESA_*` variables on Render and redeploy: the till's credentials update on start, and the change is logged in the audit log.
+- **More than one till** (for a partner's own till): `npm run till -- add …` from your computer, with the production `MONGODB_URI` and `HUB_SECRET_KEY` in `backend/.env`, or from Render's Shell. **More dashboard users:** `npm run admin:create -- --email … --name … [--role viewer]`.
+- **Custom domains.** If the API gets one (e.g. `hub-api.isatech.co.ke`), set `PUBLIC_URL` to it on Render. For the dashboard, add the domain in Vercel and to `CLIENT_ORIGIN`.
+- **Why not Render's free plan?** It sleeps after 15 idle minutes. Then Safaricom's callbacks are lost, the 30-second recovery sweep stops, and a platform's first request takes about a minute while the server wakes up.
+- **One server instead of two.** You can skip Vercel: set the Render build command to `npm ci && npm ci --prefix ../frontend && npm run build --prefix ../frontend`, and set `SERVE_CLIENT=true`. The API then serves the dashboard too.
+
 ## Run it locally
 
-You need Node.js 22.13+ and MongoDB (local, or a free Atlas cluster).
+You need Node.js 22.13+ and MongoDB.
 
 ```bash
 npm run install:all
-cp backend/.env.example backend/.env      # set MONGODB_URI, JWT_SECRET, HUB_SECRET_KEY
+cp backend/.env.example backend/.env   # MONGODB_URI, JWT_SECRET, HUB_SECRET_KEY, BOOTSTRAP_ADMIN_*, and a sandbox till
+npm run dev:backend                    # API on http://localhost:5100
+npm run dev:frontend                   # dashboard on http://localhost:5173
 ```
 
-Generate `JWT_SECRET` and `HUB_SECRET_KEY` with `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`. **Keep a copy of `HUB_SECRET_KEY` somewhere safe.** It decrypts the till credentials. If you lose it, re-enter them.
+For a sandbox till, set:
+- `MPESA_ENV=sandbox`
+- `MPESA_SHORTCODE=174379`, with `MPESA_TILL_NUMBER` empty
+- the passkey shown on the Daraja simulator
+- your sandbox app's consumer key and secret
 
-```bash
-cd backend
-npm run admin:create -- --email you@example.com --name "Your Name"     # prints a temporary password
-
-# A sandbox till (Safaricom's test shortcode 174379). Use the key and secret of a sandbox app
-# from developer.safaricom.co.ke → My Apps:
-MPESA_CONSUMER_KEY=… MPESA_CONSUMER_SECRET=… npm run till -- add --sandbox --name "Sandbox"
-cd ..
-
-npm run dev:backend      # API on http://localhost:5100
-npm run dev:frontend     # dashboard on http://localhost:5173
-```
-
-Sign in, open **Platforms → Add platform**, choose the till, and copy the API key and webhook secret. Safaricom can only post results to a public HTTPS address, so for end-to-end tests set `PUBLIC_URL` to a tunnel (for example `cloudflared tunnel --url http://localhost:5100`). Without one, the status sweep still settles sandbox payments.
-
-## Going live on the ISA till
-
-1. **Daraja go-live for the Buy Goods till.** On developer.safaricom.co.ke, take the production app live for Lipa na M-Pesa Online on your till. Three things matter:
-   - **Store (head office) number.** It signs requests. It is often *not* the till number. egertickets calls it `MPESA_SHORTCODE`.
-   - **Till number.** Customers pay into it. egertickets calls it `MPESA_STORE_NUMBER`.
-   - **Passkey.** Safaricom emails it at go-live.
-
-   egertickets already uses these, so reuse them.
-2. **Host the API somewhere always on.** Safaricom's callbacks to a sleeping server get lost, so don't use a free plan that sleeps. Render Starter, Railway, Fly.io or a VPS all work. The simplest setup is one service that also serves the dashboard:
-   ```bash
-   npm run install:all && npm run build
-   SERVE_CLIENT=true NODE_ENV=production npm start
-   ```
-   Set `MONGODB_URI` (a database just for the Hub), `JWT_SECRET`, `HUB_SECRET_KEY` and `PUBLIC_URL` (this service's https address). Health check: `/health`.
-   To host the dashboard separately (for example on Vercel), build `frontend/` with `VITE_API_URL=https://<api>/api` and set `CLIENT_ORIGIN` on the API to the dashboard's address.
-3. **Add the production till** from a machine with the production `.env`:
-   ```bash
-   cd backend
-   MPESA_CONSUMER_KEY=… MPESA_CONSUMER_SECRET=… MPESA_PASSKEY=… \
-     npm run till -- add --name "ISA main till" --kind till --env production --shortcode <store number> --till <till number>
-   npm run till -- list
-   ```
-   Nothing needs registering with Safaricom: the callback URL is sent with every prompt.
-4. **Create the platforms** in the dashboard (EgerTickets, A-Read), choose the till, and give each platform's server its API key and webhook secret.
-5. **Try a real KES 1 payment** before switching a platform over.
-
-Other till commands: `set-credentials`, `deactivate` / `activate`, `rotate-callback-secret` (`npm run till -- <command> --id <till id>`). Dashboard accounts: `node scripts/admin.js list | reset-password | deactivate | activate --email …`. Every command is written to the audit log.
+Safaricom can only post results to a public HTTPS address, so for end-to-end tests set `PUBLIC_URL` to a tunnel (e.g. `cloudflared tunnel --url http://localhost:5100`). Without one, the status sweep still settles sandbox payments.
 
 ## Connecting a platform
+
+Yes, each platform needs a small code change, not just a key. Today egertickets and A-Read talk to Safaricom themselves. To use the Hub, the platform's **backend** stops calling Daraja and calls the Hub instead, and it gets one new route that receives the Hub's webhooks. The API key is what lets it in, and the webhook secret lets it trust what the Hub sends back.
+
+**1. In the Hub dashboard** (you, once per platform): go to **Platforms → Add platform** and fill in:
+- **Name and slug**, e.g. `EgerTickets` / `egertickets`.
+- **Till**: ISA main till.
+- **Account reference**: the name shown on the payer's prompt, 12 characters max.
+- **Webhook URL**: the platform's backend address plus a new route, e.g. `https://<a-read-api>.onrender.com/api/payments/hub-webhook`.
+
+On **Create**, the Hub shows the **API key** (`isa_sk_…`) and the **webhook secret** (`whsec_…`) once. If one is lost, issue a new one from the platform's page; the old key stops working at once.
+
+**2. On the platform's backend host** (e.g. its Render service), add three environment variables. Never put them in the frontend: the API key can start payments into your till.
+
+```
+ISA_HUB_URL=https://isa-tech-hub-api.onrender.com
+ISA_HUB_API_KEY=isa_sk_…
+ISA_HUB_WEBHOOK_SECRET=whsec_…
+```
+
+**3. In the platform's backend code**, copy `sdk/node/isa-hub.cjs` into it and make three changes:
+
+| Today (own Daraja code) | With the Hub |
+| --- | --- |
+| Sends the STK push to Safaricom | `hub.createPayment({ phone, amount, reference: <order id>, purpose, idempotencyKey })`, then save the returned `payment.id` with the order |
+| Its own Safaricom callback route | A webhook route that checks the signature with `verifyWebhook(...)`, then marks the order paid or failed |
+| "Check status" asks Safaricom | `hub.getPayment(<saved id>)` |
+
+The order, ticket or book logic doesn't change: the webhook handler calls the same "mark paid" code the Safaricom callback calls today.
+
+**4. Test it.** On the platform's page in the dashboard, press **Send test webhook**: the platform must answer 2xx. Then make a real KES 1 payment and watch it under **Payments**: you'll see the prompt, Safaricom's answer and the webhook delivery.
+
+**5. Clean up.** Once it works, remove the Daraja variables (`MPESA_*`) from the platform's host. From then on only the Hub holds the till's credentials.
+
+### API reference
 
 All calls are server-to-server with `Authorization: Bearer isa_sk_…`. **Never put the key in a browser or app.**
 
@@ -153,7 +183,7 @@ const { payment } = await hub.createPayment({
 });
 
 // Settle: the raw body is needed to check the signature.
-app.post('/api/hub/webhook', express.raw({ type: 'application/json' }), (req, res) => {
+app.post('/api/payments/hub-webhook', express.raw({ type: 'application/json' }), (req, res) => {
   let event;
   try {
     event = verifyWebhook({ secret: process.env.ISA_HUB_WEBHOOK_SECRET, rawBody: req.body, signature: req.get('isa-signature') });

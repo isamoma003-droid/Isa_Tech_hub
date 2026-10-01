@@ -1,5 +1,7 @@
-// Tills are managed here, not in the dashboard, so a stolen dashboard password can't send
-// customers' money to a different till. Run from backend/ with the production MONGODB_URI and
+// Tills are managed on the server, not in the dashboard, so a stolen dashboard password can't send
+// customers' money to a different till. The simplest way is the MPESA_* environment variables on
+// the host (see .env.example): the till is created or updated when the server starts. This script
+// is for everything else: more than one till, a partner's till, deactivating, rotating secrets. Run from backend/ with the production MONGODB_URI and
 // HUB_SECRET_KEY in .env. Daraja credentials are read from the environment, never from the
 // command line (where they would land in your shell history):
 //
