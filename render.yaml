@@ -2,7 +2,7 @@
 # Render asks for every value marked `sync: false` while creating the service.
 services:
   - type: web
-    name: isa-tech-hub-api
+    name: isa-tech-hub
     runtime: node
     rootDir: backend
     # Always on. A sleeping server misses Safaricom's payment callbacks and the 30-second

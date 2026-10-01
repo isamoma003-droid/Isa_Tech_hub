@@ -57,7 +57,7 @@ backend/scripts/        admin.js (dashboard accounts), till.js (tills and Daraja
 
 | | Where | Folder | Address (example) |
 | --- | --- | --- | --- |
-| Hub API | Render, Starter plan (always on) | `backend/` | `https://isa-tech-hub-api.onrender.com` |
+| Hub API | Render, Starter plan (always on) | `backend/` | `https://isa-tech-hub.onrender.com` |
 | Dashboard | Vercel | `frontend/` | `https://isa-tech-hub.vercel.app` |
 | Database | MongoDB Atlas | | a new database, e.g. `isa-tech-hub` |
 
@@ -118,7 +118,7 @@ On **Create**, the Hub shows the **API key** (`isa_sk_…`) and the **webhook se
 **2. On the platform's backend host** (e.g. its Render service), add three environment variables. Never put them in the frontend: the API key can start payments into your till.
 
 ```
-ISA_HUB_URL=https://isa-tech-hub-api.onrender.com
+ISA_HUB_URL=https://isa-tech-hub.onrender.com
 ISA_HUB_API_KEY=isa_sk_…
 ISA_HUB_WEBHOOK_SECRET=whsec_…
 ```

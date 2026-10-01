@@ -24,6 +24,8 @@ const tillSchema = new Schema(
     // Makes this till's callback URL unguessable, so strangers can't post fake results.
     callbackSecret: { type: String, select: false, default: () => randomToken(24) },
     active: { type: Boolean, default: true },
+    // env: managed by the MPESA_* variables on the host (one till). cli: added with scripts/till.js.
+    source: { type: String, enum: ['env', 'cli'] },
   },
   { timestamps: true },
 );

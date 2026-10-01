@@ -206,7 +206,7 @@ module.exports = { IsaHub, IsaHubError, verifyWebhook };
 
 Add these environment variables to `backend/.env.example`:
 - `MPESA_VIA_HUB` (`true` to switch on; anything else means off)
-- `ISA_HUB_URL` (e.g. `https://isa-tech-hub-api.onrender.com`)
+- `ISA_HUB_URL` (e.g. `https://isa-tech-hub.onrender.com`)
 - `ISA_HUB_API_KEY` (`isa_sk_…`)
 - `ISA_HUB_WEBHOOK_SECRET` (`whsec_…`)
 
