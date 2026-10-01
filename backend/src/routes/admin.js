@@ -13,6 +13,7 @@ import { Platform } from '../models/Platform.js';
 import { Till } from '../models/Till.js';
 import { WebhookDelivery } from '../models/WebhookDelivery.js';
 import { audit } from '../services/audit.js';
+import { checkCredentials } from '../services/daraja.js';
 import { checkPayment } from '../services/payments.js';
 import { resendPaymentWebhook, sendTestWebhook } from '../services/webhooks.js';
 import { HttpError, badRequest, conflict, notFound, unauthorized } from '../utils/httpError.js';
@@ -436,20 +437,116 @@ router.post('/platforms/:id/test-webhook', adminOnly, async (req, res) => {
   res.json({ result: await sendTestWebhook(platform) });
 });
 
-// --- Tills (read-only here; managed with scripts/till.js) ------------------------------------
+// --- Tills ------------------------------------------------------------------------------------
+// Admins can correct a till here. Its numbers decide where customers' money goes, so every change
+// asks for the admin's password again and is audited. Daraja keys are write-only: they can be
+// replaced but never read back.
+
+const TILL_SECRETS = '+consumerKey +consumerSecret +passkey';
+const hint = (value) => (value ? `…${value.slice(-4)}` : null);
+
+async function tillView(till) {
+  const platforms = await Platform.find({ till: till._id }).select('name slug status').sort({ createdAt: 1 });
+  let consumerKeyHint = null;
+  try {
+    consumerKeyHint = hint(till.consumerKey ? till.credentials().consumerKey : '');
+  } catch {
+    // Stored with a different HUB_SECRET_KEY: shown as missing.
+  }
+  return {
+    ...till.toPublic(),
+    hasCredentials: Boolean(till.consumerKey && till.consumerSecret && till.passkey),
+    consumerKeyHint,
+    callbackUrl: `${env.publicUrl}/mpesa/callback/${till.id}/••••••`,
+    platforms: platforms.length,
+    platformList: platforms.map((p) => ({ id: p.id, name: p.name, slug: p.slug, status: p.status })),
+    updatedAt: till.updatedAt,
+  };
+}
+
+async function findTill(id) {
+  const till = await Till.findById(objectId(id, 'Till not found')).select(TILL_SECRETS);
+  if (!till) throw notFound('Till not found');
+  return till;
+}
 
 router.get('/tills', async (_req, res) => {
-  const tills = await Till.find().sort({ createdAt: 1 }).select('+consumerKey +consumerSecret +passkey');
-  const counts = await Platform.aggregate([{ $group: { _id: '$till', count: { $sum: 1 } } }]);
-  const byTill = new Map(counts.map((row) => [String(row._id), row.count]));
-  res.json({
-    tills: tills.map((till) => ({
-      ...till.toPublic(),
-      hasCredentials: Boolean(till.consumerKey && till.consumerSecret && till.passkey),
-      callbackUrl: `${env.publicUrl}/mpesa/callback/${till.id}/••••••`,
-      platforms: byTill.get(till.id) || 0,
-    })),
-  });
+  const tills = await Till.find().sort({ createdAt: 1 }).select(TILL_SECRETS);
+  res.json({ tills: await Promise.all(tills.map(tillView)) });
+});
+
+router.get('/tills/:id', async (req, res) => {
+  res.json({ till: await tillView(await findTill(req.params.id)) });
+});
+
+// Guessing the confirmation password is slowed down like sign-in.
+const tillEditLimiter = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: 10,
+  keyGenerator: (req) => req.admin.id,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many attempts, please wait 15 minutes' },
+  skip: () => env.nodeEnv === 'test',
+});
+
+const digits = (label) => z.string().trim().regex(/^\d{5,8}$/, `${label} must be 5–8 digits`);
+const secret = z.string().trim().max(300).optional();
+const tillUpdateSchema = z.object({
+  password: z.string().min(1, 'Enter your password to confirm'),
+  name: z.string().trim().min(2, 'Give the till a name').max(60).optional(),
+  kind: z.enum(['till', 'paybill']).optional(),
+  environment: z.enum(['sandbox', 'production']).optional(),
+  shortcode: digits('The store / Paybill number').optional(),
+  tillNumber: z.union([z.literal(''), digits('The till number')]).optional(),
+  active: z.boolean().optional(),
+  // Blank or missing keeps the current value.
+  consumerKey: secret,
+  consumerSecret: secret,
+  passkey: secret,
+});
+
+router.patch('/tills/:id', adminOnly, tillEditLimiter, validate(tillUpdateSchema), async (req, res) => {
+  const { password, consumerKey, consumerSecret, passkey, ...fields } = req.valid.body;
+  const admin = await AdminUser.findById(req.admin._id).select('+passwordHash');
+  if (!(await admin.checkPassword(password))) throw new HttpError(403, 'Your password is wrong, so nothing was changed');
+
+  const till = await findTill(req.params.id);
+  const before = { name: till.name, kind: till.kind, environment: till.environment, shortcode: till.shortcode, tillNumber: till.tillNumber || null, active: till.active };
+
+  if (fields.kind === 'paybill') fields.tillNumber = '';
+  if (fields.tillNumber !== undefined) fields.tillNumber = fields.tillNumber || undefined;
+  till.set(fields);
+  if (fields.kind === 'paybill' || ('tillNumber' in fields && !fields.tillNumber)) till.tillNumber = undefined;
+  if (till.kind === 'till' && !till.tillNumber) throw badRequest('A Buy Goods till needs its till number');
+
+  const credentials = Object.fromEntries(Object.entries({ consumerKey, consumerSecret, passkey }).filter(([, value]) => value));
+  till.setCredentials(credentials);
+
+  const details = {};
+  for (const [key, from] of Object.entries(before)) {
+    const to = key === 'tillNumber' ? till.tillNumber || null : till[key];
+    if (from !== to) details[key] = { from, to };
+  }
+  if (Object.keys(credentials).length) details.credentials = Object.keys(credentials);
+  if (!Object.keys(details).length) return res.json({ till: await tillView(till), changed: [] });
+
+  await till.save();
+  // Where customers' money goes changed: logged as its own action so it stands out.
+  const numbers = ['kind', 'environment', 'shortcode', 'tillNumber'].some((key) => details[key]);
+  await audit(req, numbers ? 'till.numbers_changed' : 'till.updated', { type: 'till', id: till.id, label: till.name }, details);
+  res.json({ till: await tillView(till), changed: Object.keys(details) });
+});
+
+// Signs in to Daraja with the till's consumer key and secret.
+router.post('/tills/:id/check', adminOnly, async (req, res) => {
+  const till = await findTill(req.params.id);
+  try {
+    await checkCredentials(till);
+    res.json({ ok: true, message: `Daraja accepted the consumer key and secret (${till.environment}).` });
+  } catch (err) {
+    res.json({ ok: false, message: err.message });
+  }
 });
 
 // --- Audit log -------------------------------------------------------------------------------

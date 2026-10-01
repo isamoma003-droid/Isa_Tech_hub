@@ -1,17 +1,20 @@
+import { Link } from 'react-router-dom';
 import { useTills } from '../api/queries.js';
 import { Empty, ErrorMessage, PageHeader, Spinner, StatusBadge } from '../components/ui.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
 import { formatDateTime } from '../utils/format.js';
 
 export default function TillsPage() {
+  const { canEdit } = useAuth();
   const { data, isPending, error } = useTills();
 
   return (
     <>
       <PageHeader title="Tills" subtitle="Where the money lands. Platforms point at a till; several can share one." />
       <div className="notice notice-info">
-        Tills and their Daraja credentials are set on the server only: the <code>MPESA_*</code> environment variables on Render (applied when
-        the server starts), or <code>npm run till</code> for extra tills. Never from this dashboard, so a stolen dashboard password can't send
-        customers' money to a different till.
+        Open a till to correct its numbers or replace its Daraja keys. Every change asks for your password again and is written to the audit log.
+        The first till comes from the <code>MPESA_*</code> variables on Render; a later change to one of those variables is applied on the next
+        restart, otherwise the dashboard's values stay.
       </div>
       {isPending ? (
         <Spinner />
@@ -22,7 +25,9 @@ export default function TillsPage() {
           {data.tills.map((t) => (
             <div key={t.id} className="card">
               <div className="card-head">
-                <h2>{t.name}</h2>
+                <h2>
+                  <Link to={`/tills/${t.id}`}>{t.name}</Link>
+                </h2>
                 <StatusBadge status={t.active ? 'active' : 'disabled'} />
               </div>
               <p className="platform-money">
@@ -44,7 +49,7 @@ export default function TillsPage() {
                 </div>
                 <div className="kv-row">
                   <dt>Platforms</dt>
-                  <dd>{t.platforms}</dd>
+                  <dd>{t.platformList?.map((p) => p.name).join(', ') || 'none'}</dd>
                 </div>
                 <div className="kv-row">
                   <dt>Callback</dt>
@@ -55,6 +60,11 @@ export default function TillsPage() {
                   <dd>{formatDateTime(t.createdAt)}</dd>
                 </div>
               </dl>
+              <div className="button-row">
+                <Link to={`/tills/${t.id}`} className="btn btn-ghost btn-small">
+                  {canEdit ? 'Edit till' : 'View till'}
+                </Link>
+              </div>
             </div>
           ))}
         </div>

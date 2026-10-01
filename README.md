@@ -31,7 +31,13 @@ Each platform keeps its own data (bookings, books, organizer payouts). The Hub h
   - Platform onboarding: API key and webhook secret shown once, rotate either, send a test webhook, disable a platform.
   - Tills (read-only) and an audit log.
 - **Roles**: *admin* can change things; *viewer* is read-only, and phone numbers are masked for viewers.
-- **Tills are managed from the server command line only.** A stolen dashboard password cannot send customers' money to a different till. Till credentials are stored encrypted (AES-256-GCM).
+- **Tills** start from the `MPESA_*` variables on Render, or `npm run till` for extra tills. Admins can correct a till in the dashboard (**Tills → Edit till**): its name, Buy Goods or Paybill, live or sandbox, store number, till number, on/off, and its Daraja keys. These numbers decide where customers' money goes, so:
+  - every save asks for the admin's password again (rate-limited);
+  - every save is written to the audit log (numbers from → to; keys only by name);
+  - the keys are write-only: they're stored encrypted (AES-256-GCM) and never shown, only replaced;
+  - **Check Daraja sign-in** confirms the consumer key and secret.
+
+  For each field, the latest change wins: a dashboard edit survives restarts, and a later change to the matching `MPESA_*` variable on Render is applied on the next start.
 
 ## Repository layout
 
@@ -78,7 +84,7 @@ Render and Vercel build from `main` unless you pick another branch, so merge thi
 6. **Add the platforms and try a real KES 1 payment** (see [Connecting a platform](#connecting-a-platform)).
 
 **Notes**
-- **Changing the till later.** Edit the `MPESA_*` variables on Render and redeploy: the till's credentials update on start, and the change is logged in the audit log.
+- **Changing the till later.** The easiest way is **Tills → Edit till** in the dashboard; the change applies from the next payment. Changing an `MPESA_*` variable on Render also works: it's applied on the next start. Either way the till keeps its id, so its platforms follow along, and the change is in the audit log.
 - **More than one till** (for a partner's own till): `npm run till -- add …` from your computer, with the production `MONGODB_URI` and `HUB_SECRET_KEY` in `backend/.env`, or from Render's Shell. **More dashboard users:** `npm run admin:create -- --email … --name … [--role viewer]`.
 - **Custom domains.** If the API gets one (e.g. `hub-api.isatech.co.ke`), set `PUBLIC_URL` to it on Render. For the dashboard, add the domain in Vercel and to `CLIENT_ORIGIN`.
 - **Why not Render's free plan?** It sleeps after 15 idle minutes. Then Safaricom's callbacks are lost, the 30-second recovery sweep stops, and a platform's first request takes about a minute while the server wakes up.

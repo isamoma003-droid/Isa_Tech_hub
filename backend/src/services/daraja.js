@@ -96,6 +96,15 @@ function signature(till, ctx) {
   };
 }
 
+// Signs in to Daraja with the till's consumer key and secret, skipping the token cache.
+// Proves the key and secret; the store number, till number and passkey are only proven by a payment.
+export async function checkCredentials(till) {
+  const ctx = context(till);
+  for (const cacheKey of tokens.keys()) if (cacheKey.startsWith(`${till.id}:`)) tokens.delete(cacheKey);
+  await accessToken(till, ctx);
+  return { ok: true };
+}
+
 export const callbackUrl = (till) => `${env.publicUrl}/mpesa/callback/${till.id}/${till.callbackSecret}`;
 
 // Sends the "enter your M-Pesa PIN" prompt to the payer's phone.
