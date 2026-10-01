@@ -85,7 +85,7 @@ export async function createPayment(platform, { phone, amount, reference, purpos
         $set: { checkoutRequestId: result.checkoutRequestId, merchantRequestId: result.merchantRequestId },
         ...pushEvent('stk.sent', 'daraja', { data: { checkoutRequestId: result.checkoutRequestId } }),
       },
-      { new: true },
+      { returnDocument: 'after' },
     );
     return { payment: updated, replayed: false };
   } catch (err) {
@@ -99,7 +99,7 @@ export async function createPayment(platform, { phone, amount, reference, purpos
         $set: { status: 'failed', failedAt: new Date(), resultDesc: err.message },
         ...pushEvent('stk.refused', 'daraja', { note: err.message }),
       },
-      { new: true },
+      { returnDocument: 'after' },
     );
     return { payment: failed, replayed: false, error: "We couldn't reach M-Pesa. Please try again in a moment." };
   }
@@ -122,7 +122,7 @@ export async function markPaid(payment, { receipt, paidAmount, source, note }) {
     Payment.findOneAndUpdate(
       { _id: payment._id, status: { $in: ['pending', 'failed'] } },
       { $set: fields, $unset: { failedAt: 1 }, ...pushEvent(`status.${fields.status}`, source, { note: eventNote, data: { receipt } }) },
-      { new: true },
+      { returnDocument: 'after' },
     );
 
   let updated;
@@ -156,7 +156,7 @@ export async function markFailed(payment, { resultCode, resultDesc, source, note
       $set: { status: 'failed', failedAt: new Date(), resultCode: resultCode ?? null, resultDesc },
       ...pushEvent('status.failed', source, { note: note || resultDesc }),
     },
-    { new: true },
+    { returnDocument: 'after' },
   );
   if (updated) {
     await enqueuePaymentEvent(updated, 'payment.failed');
@@ -240,7 +240,7 @@ export async function checkPayment(payment, { source, minGapMs = 0 } = {}) {
       $or: [{ lastCheckedAt: null }, { lastCheckedAt: { $lte: new Date(now - minGapMs) } }],
     },
     { $set: { lastCheckedAt: new Date(now) }, $inc: { checks: 1 } },
-    { new: true },
+    { returnDocument: 'after' },
   );
   if (!claimed) return { outcome: 'unchanged', payment };
 

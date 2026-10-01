@@ -99,7 +99,7 @@ export async function deliverDueWebhooks({ limit = 50 } = {}) {
       const delivery = await WebhookDelivery.findOneAndUpdate(
         { status: 'pending', nextAttemptAt: { $lte: now }, $or: [{ lockedUntil: null }, { lockedUntil: { $lte: now } }] },
         { $set: { lockedUntil: new Date(now.getTime() + 60_000) } },
-        { sort: { nextAttemptAt: 1 }, new: true },
+        { sort: { nextAttemptAt: 1 }, returnDocument: 'after' },
       );
       if (!delivery) break;
       await attempt(delivery);

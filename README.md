@@ -215,8 +215,8 @@ The API tests run the real app against a real MongoDB, with Safaricom faked and 
 
 ## Next steps
 
-1. **A-Read → Hub.** A-Read's `/support` page and admin Payments tab already exist with their own Daraja code. Switch `routes/payments.js` to `hub.createPayment` / `hub.getPayment` plus a webhook route, and keep `Payment.hasPaid` reading A-Read's own copy.
-2. **egertickets → Hub behind a switch.** Make its STK push go through the Hub when `MPESA_VIA_HUB=true`. On `payment.paid`, call its existing `markPaymentCompleted`, and keep its own callback route up for prompts already in flight. Paystack and organizer payouts stay in egertickets.
+1. **A-Read → Hub: done.** It's on A-Read's `claude/magical-planck-401rdq` branch. A-Read uses the Hub once `ISA_HUB_URL`, `ISA_HUB_API_KEY` and `ISA_HUB_WEBHOOK_SECRET` are set, with its webhook at `/api/payments/hub-webhook`. Until then it keeps its own Daraja connection.
+2. **egertickets → Hub, behind `MPESA_VIA_HUB`.** [`docs/prompts/egertickets-integration.md`](docs/prompts/egertickets-integration.md) is a ready-to-paste prompt for a Claude Code session with the egertickets repo. It covers which files change, the webhook at `/api/payments/isa-hub/webhook`, tests, and rollout and rollback. Paystack and organizer payouts stay in egertickets.
 3. **Authenticator codes (TOTP) for dashboard sign-in**, as egertickets' superadmin console has.
 4. **Payments made from the M-Pesa menu.** Register the till's C2B confirmation URL with the Hub, add an "unmatched payments" queue, and let payers claim a payment by M-Pesa code.
 5. **Statement matching**: upload the M-Pesa org-portal statement and flag differences.

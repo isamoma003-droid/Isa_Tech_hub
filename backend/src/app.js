@@ -28,11 +28,15 @@ export function createApp() {
   app.use('/api/admin', cors({ origin: env.clientOrigins }), adminRoutes);
   app.use(['/api', '/v1', '/mpesa'], notFoundHandler);
 
-  // Optionally serve the built dashboard from the same server (SERVE_CLIENT=true).
+  // Optionally serve the built dashboard from the same server (SERVE_CLIENT=true). Otherwise the
+  // bare address answers with a short note, so opening it in a browser (or Render probing it)
+  // doesn't look like an error.
   const clientDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../frontend/dist');
   if (process.env.SERVE_CLIENT === 'true' && fs.existsSync(clientDist)) {
     app.use(express.static(clientDist, { index: false, maxAge: '1h' }));
     app.get('/{*path}', (_req, res) => res.sendFile(path.join(clientDist, 'index.html')));
+  } else {
+    app.get('/', (_req, res) => res.json({ service: 'ISA Tech Hub API', status: 'ok', health: '/health' }));
   }
 
   app.use(notFoundHandler);
