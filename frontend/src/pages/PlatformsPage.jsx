@@ -13,7 +13,7 @@ export default function PlatformsPage() {
     <>
       <PageHeader
         title="Platforms"
-        subtitle="Sites and apps that take payments through the Hub."
+        subtitle="Your sites and apps, and partners using IsaPay as their M-Pesa payment gateway."
         actions={
           canEdit && (
             <Link to="/platforms/new" className="btn btn-primary">
@@ -67,7 +67,7 @@ export default function PlatformsPage() {
         </div>
       ) : (
         <Empty title="No platforms yet">
-          {canEdit ? 'Add egertickets, A-Read or a partner to start taking payments.' : 'An admin can add the first platform.'}
+          {canEdit ? 'Add egertickets, A-Read or a partner platform to start taking payments.' : 'An admin can add the first platform.'}
         </Empty>
       )}
     </>

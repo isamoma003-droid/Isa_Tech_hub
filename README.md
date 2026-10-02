@@ -1,6 +1,8 @@
-# ISA Tech Hub
+# IsaPay (ISA Tech Hub)
 
-**One M-Pesa till, many platforms.** The Hub is the only thing that talks to Safaricom. egertickets.com, A-Read and any future or partner platform ask the Hub for payments. The Hub sends the M-Pesa PIN prompt, works out how each one ended, records the money in one place, and tells the platform. An admin dashboard shows all of it and is where new platforms are onboarded.
+**IsaPay is ISA Tech's M-Pesa payment gateway: one place that takes M-Pesa payments for every platform**, ours (egertickets.com, A-Read) or a partner's that uses IsaPay as its payment gateway. It runs on the ISA Tech Hub code in this repo (the code, the API key prefix `isa_sk_` and the `ISA-*` webhook headers keep their names, so existing integrations don't change).
+
+The Hub is the only thing that talks to Safaricom. egertickets.com, A-Read and any future or partner platform ask the Hub for payments. The Hub sends the M-Pesa PIN prompt, works out how each one ended, records the money in one place, and tells the platform. An admin dashboard shows all of it and is where new platforms are onboarded.
 
 ```
  egertickets ──┐   POST /v1/payments (API key)          ┌──────────────────┐
@@ -29,9 +31,19 @@ Each platform keeps its own data (bookings, books, organizer payouts). The Hub h
   - A payments search with filters (date, platform, status, receipt, phone, reference) and CSV export.
   - A per-payment timeline showing what was sent, what Safaricom answered, and every webhook attempt, with "Check with Safaricom" and "Resend webhook" buttons.
   - Platform onboarding: API key and webhook secret shown once, rotate either, send a test webhook, disable a platform.
-  - Tills (read-only) and an audit log.
+  - Numbered M-Pesa tills ("M-Pesa till 1", "M-Pesa till 2"…), each with its own numbered Daraja keys, and an audit log.
+  - A **Developers** page for partners: the API base URL, endpoints, webhook signature checks in Node.js, PHP and Python, and a download of the Node.js client.
+  - **Installable as an app** on Windows, macOS, Android and iPhone (see [Install the dashboard as an app](#install-the-dashboard-as-an-app)).
 - **Roles**: *admin* can change things; *viewer* is read-only, and phone numbers are masked for viewers.
-- **Tills** start from the `MPESA_*` variables on Render, or `npm run till` for extra tills. Admins can correct a till in the dashboard (**Tills → Edit till**): its name, Buy Goods or Paybill, live or sandbox, store number, till number, on/off, and its Daraja keys. These numbers decide where customers' money goes, so:
+- **Tills** are numbered, and each till's Daraja keys carry its number, so keys for different tills never overlap:
+
+  | | On Render | In the dashboard |
+  | --- | --- | --- |
+  | Till 1 | `MPESA_SHORTCODE`, `MPESA_TILL_NUMBER`, `MPESA_CONSUMER_KEY`, `MPESA_CONSUMER_SECRET`, `MPESA_PASSKEY` | M-Pesa consumer key 1 |
+  | Till 2 | `MPESA_SHORTCODE_2`, `MPESA_TILL_NUMBER_2`, `MPESA_CONSUMER_KEY_2`, `MPESA_CONSUMER_SECRET_2`, `MPESA_PASSKEY_2` | M-Pesa consumer key 2 |
+  | Till N | the same names ending in `_N` (plus optional `MPESA_ENV_N`, `MPESA_TILL_NAME_N`) | M-Pesa consumer key N |
+
+  Admins can also add a till in the dashboard (**M-Pesa tills → Add till**); it gets the next free number. A set of `MPESA_*_N` variables never takes over a till that was added in the dashboard or from the command line: the log says so and names the next free number. Admins can correct a till in the dashboard (**Tills → Edit till**): its name, Buy Goods or Paybill, live or sandbox, store number, till number, on/off, and its Daraja keys. These numbers decide where customers' money goes, so:
   - every save asks for the admin's password again (rate-limited);
   - every save is written to the audit log (numbers from → to; keys only by name);
   - the keys are write-only: they're stored encrypted (AES-256-GCM) and never shown, only replaced;
@@ -39,12 +51,28 @@ Each platform keeps its own data (bookings, books, organizer payouts). The Hub h
 
   For each field, the latest change wins: a dashboard edit survives restarts, and a later change to the matching `MPESA_*` variable on Render is applied on the next start.
 
+## Making money: IsaPay billing
+
+IsaPay charges the partner platforms that use it. Your own platforms (ownership "own", e.g. egertickets and A-Read) pay nothing.
+
+| Partner's money lands in | How they pay IsaPay | Collected |
+| --- | --- | --- |
+| **Your till** (till owner "ISA Tech") | **1.5%** of each payment received | At once: the money is already in your till. You send the partner the rest; **Billing → Payouts to send** lists it, and **Payout sent** records the reference. |
+| **Their own till** (till owner "a partner") | **KES 1,000 a month** subscription | Invoiced after the month ends. **Request M-Pesa** sends a prompt to the partner's billing number, paid into your ISA till; the invoice is marked paid automatically. **Mark paid** records a payment made another way. |
+
+- **Free tier:** the first KES 10,000 of payments each month is free: no percentage on it, and no subscription for a month that stays under it.
+- **Unpaid subscriptions:** due 7 days after the month ends, shown as overdue on the dashboard; 14 days after that, the platform's `POST /v1/payments` answers **402** until it pays. **Extra grace until** on the platform's page lets it keep going while you sort it out.
+- **Invoices are written automatically** within an hour of a month ending (or press **Invoice <month> now**). Each month is invoiced once per platform, and every invoice action is in the audit log. Billing starts with the month this version is first deployed, so nobody is billed for earlier months (`BILLING_START_MONTH=YYYY-MM` changes that).
+- **Prices:** defaults come from `BILLING_PERCENT`, `BILLING_MONTHLY_FEE`, `BILLING_FREE_AMOUNT`, `BILLING_DUE_DAYS` and `BILLING_GRACE_DAYS` on Render. Any platform can have its own plan and price (**Platforms → a platform → Billing**).
+- **Partners can see and pay their bill** through the API: `GET /v1/billing` and `POST /v1/billing/invoices/<number>/pay` (see the Developers page).
+- Subscription payments are collected through a built-in platform called **IsaPay billing**, created on first use and pointed at your first active ISA till, so they appear under Payments like any other.
+
 ## Repository layout
 
 | Part | Stack |
 | --- | --- |
 | `backend/` | Node.js 22, Express 5, MongoDB (Mongoose), zod. Tests with `node:test` |
-| `frontend/` | The dashboard: React 19, Vite, React Router, TanStack Query, lucide icons |
+| `frontend/` | The dashboard: React 19, Vite, React Router, TanStack Query, lucide icons; installable (PWA: `public/manifest.webmanifest`, `public/sw.js`) |
 | `sdk/node/isa-hub.cjs` | A one-file, no-dependency client for platforms (CommonJS and ESM) |
 
 ```
@@ -56,6 +84,8 @@ backend/src/
   services/payments.js  every payment state change, the background sweep
   services/webhooks.js  signed delivery to platforms, retries
   models/               Till, Platform, Payment, WebhookDelivery, AdminUser, AuditLog
+  services/billing.js   plans, monthly invoices, M-Pesa collection, suspension when unpaid
+  services/keepAlive.js keeps a free Render service awake
 backend/scripts/        admin.js (dashboard accounts), till.js (tills and Daraja credentials)
 ```
 
@@ -63,7 +93,7 @@ backend/scripts/        admin.js (dashboard accounts), till.js (tills and Daraja
 
 | | Where | Folder | Address (example) |
 | --- | --- | --- | --- |
-| Hub API | Render, Starter plan (always on) | `backend/` | `https://isa-tech-hub.onrender.com` |
+| Hub API | Render: free plan with keep-alive for now, Starter (always on) later | `backend/` | `https://isa-tech-hub.onrender.com` |
 | Dashboard | Vercel | `frontend/` | `https://isa-tech-hub.vercel.app` |
 | Database | MongoDB Atlas | | a new database, e.g. `isa-tech-hub` |
 
@@ -85,10 +115,20 @@ Render and Vercel build from `main` unless you pick another branch, so merge thi
 
 **Notes**
 - **Changing the till later.** The easiest way is **Tills → Edit till** in the dashboard; the change applies from the next payment. Changing an `MPESA_*` variable on Render also works: it's applied on the next start. Either way the till keeps its id, so its platforms follow along, and the change is in the audit log.
-- **More than one till** (for a partner's own till): `npm run till -- add …` from your computer, with the production `MONGODB_URI` and `HUB_SECRET_KEY` in `backend/.env`, or from Render's Shell. **More dashboard users:** `npm run admin:create -- --email … --name … [--role viewer]`.
+- **More than one till** (for a partner's own till): **M-Pesa tills → Add till** in the dashboard, or the numbered `MPESA_*_2` variables on Render, or `npm run till -- add …` from your computer with the production `MONGODB_URI` and `HUB_SECRET_KEY` in `backend/.env`. **More dashboard users:** `npm run admin:create -- --email … --name … [--role viewer]`.
 - **Custom domains.** If the API gets one (e.g. `hub-api.isatech.co.ke`), set `PUBLIC_URL` to it on Render. For the dashboard, add the domain in Vercel and to `CLIENT_ORIGIN`.
-- **Why not Render's free plan?** It sleeps after 15 idle minutes. Then Safaricom's callbacks are lost, the 30-second recovery sweep stops, and a platform's first request takes about a minute while the server wakes up.
+- **Render's free plan and keep-alive.** The free plan sleeps after 15 minutes without incoming requests; a sleeping server loses Safaricom's callbacks, stops the 30-second recovery sweep, and takes about a minute to answer a platform's first request. Until you move to the Starter plan, the API pings its own public address (`/health`) every 10 minutes so it never looks idle. It's on by default on Render (`KEEP_ALIVE`, `KEEP_ALIVE_EVERY_MINUTES`); the open dashboard also checks `/api/health` every minute. When you upgrade to Starter, change `plan: free` to `plan: starter` in `render.yaml` and set `KEEP_ALIVE=false`. A free instance running all month uses about 744 of the 750 free hours Render gives each workspace, so keep only this one free service always on. A redeploy or crash still restarts the server; for extra safety, an external monitor (e.g. UptimeRobot every 5 minutes on `/health`) can also wake it.
 - **One server instead of two.** You can skip Vercel: set the Render build command to `npm ci && npm ci --prefix ../frontend && npm run build --prefix ../frontend`, and set `SERVE_CLIENT=true`. The API then serves the dashboard too.
+
+## Install the dashboard as an app
+
+The dashboard is a Progressive Web App: it installs like a native app, with its own icon and window, opens instantly, and updates itself with every Vercel deploy. Money data is never cached; it always comes live from the API.
+
+- **Windows / macOS / Linux (Chrome or Edge):** open the dashboard and press **Install app** at the top right (or the install icon in the address bar).
+- **Android (Chrome):** **Install app**, or ⋮ → **Install app** / **Add to Home screen**.
+- **iPhone / iPad (Safari):** **Share** → **Add to Home Screen**.
+
+Sign-ins last until the app window is closed, as in the browser.
 
 ## Run it locally
 
@@ -153,6 +193,8 @@ All calls are server-to-server with `Authorization: Bearer isa_sk_…`. **Never 
 | `POST /v1/payments` | Start a payment: `{ phone, amount, reference, purpose?, description?, metadata? }`, plus an `Idempotency-Key` header |
 | `GET /v1/payments/:id` | Current state (also asks Safaricom when a payment is pending and the callback is late) |
 | `GET /v1/payments?reference=&status=&limit=` | The platform's own payments |
+| `GET /v1/billing` | The platform's IsaPay plan, fees so far this month, standing and invoices |
+| `POST /v1/billing/invoices/:number/pay` | Pay a subscription invoice: sends an M-Pesa prompt to `{ phone }` (or the billing number) |
 
 A payment looks like this:
 ```json
@@ -162,7 +204,7 @@ A payment looks like this:
   "metadata": {}, "createdAt": "…", "paidAt": "…" }
 ```
 
-`status` is one of `pending`, `paid`, `failed` or `disputed`. `POST /v1/payments` answers `201` (sent) or `200` with `"replayed": true` (same idempotency key). It answers `502` with the failed `payment` when M-Pesa refuses the request, `409` when that phone already has a prompt waiting, and `400` with `details` for invalid input.
+`status` is one of `pending`, `paid`, `failed` or `disputed`. `POST /v1/payments` answers `201` (sent) or `200` with `"replayed": true` (same idempotency key). It answers `502` with the failed `payment` when M-Pesa refuses the request, `402` when the platform's IsaPay subscription is overdue past its grace period, `409` when that phone already has a prompt waiting, and `400` with `details` for invalid input.
 
 **Webhooks** are POSTed as JSON to the platform's webhook URL with these headers:
 - `ISA-Event`
@@ -213,6 +255,8 @@ The API tests run the real app against a real MongoDB, with Safaricom faked and 
 - the exact STK payload for a Buy Goods till, and idempotency;
 - callbacks: forged, duplicate, wrong-secret, amount mismatch, and a late success after a cancel;
 - the background sweep and the 10-minute give-up;
+- numbered tills from `MPESA_*_N` variables and from the dashboard, and the keep-alive ping;
+- billing: percentage and subscription invoices, the free tier, M-Pesa collection and suspension when unpaid;
 - polling, signed webhooks and their retries;
 - key rotation, disabling a platform and viewer permissions;
 - CSV export, the audit log, and the `sdk/` client.

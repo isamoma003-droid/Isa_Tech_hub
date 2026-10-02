@@ -7,6 +7,8 @@ import { env } from '../config/env.js';
 import { requirePlatform } from '../middleware/platformAuth.js';
 import { validate } from '../middleware/validate.js';
 import { PAYMENT_STATUSES, Payment } from '../models/Payment.js';
+import { Invoice } from '../models/Invoice.js';
+import { assertCanTakePayments, billingStanding, collectInvoice, estimate } from '../services/billing.js';
 import { checkPayment, createPayment } from '../services/payments.js';
 import { badRequest, notFound } from '../utils/httpError.js';
 import { normalizePhone } from '../utils/phone.js';
@@ -85,6 +87,7 @@ router.post('/payments', validate(createSchema), async (req, res) => {
   const phone = normalizePhone(body.phone);
   if (!phone) throw badRequest('phone must be a Kenyan mobile number, e.g. 0712345678 or 254712345678');
   const idempotencyKey = req.get('idempotency-key')?.trim().slice(0, 100) || body.idempotencyKey;
+  await assertCanTakePayments(req.platform);
 
   const { payment, replayed, error } = await createPayment(req.platform, { ...body, phone, idempotencyKey });
   if (error) return res.status(502).json({ error, payment: view(req, payment) });
@@ -115,6 +118,33 @@ router.get('/payments/:id', async (req, res) => {
     ({ payment } = await checkPayment(payment, { source: 'poll', minGapMs: POLL_CHECK_GAP_MS }));
   }
   res.json({ payment: view(req, payment) });
+});
+
+// The platform's IsaPay plan, this month so far, and its invoices.
+router.get('/billing', async (req, res) => {
+  const [current, standing, invoices] = await Promise.all([
+    estimate(req.platform),
+    billingStanding(req.platform),
+    Invoice.find({ platform: req.platform._id }).sort({ period: -1 }).limit(24),
+  ]);
+  res.json({
+    plan: current.pricing,
+    currentMonth: { period: current.period, volume: current.volume, estimatedFee: current.fee },
+    standing: { state: standing.state, suspendAt: standing.suspendAt || null },
+    invoices: invoices.map((invoice) => {
+      const { platform: _platform, ...rest } = invoice.toPublic();
+      return rest;
+    }),
+  });
+});
+
+// Pays an open subscription invoice: sends the M-Pesa prompt to `phone` (or the billing phone).
+router.post('/billing/invoices/:number/pay', validate(z.object({ phone: z.string().trim().max(20).optional() })), async (req, res) => {
+  const invoice = await Invoice.findOne({ number: req.params.number, platform: req.platform._id });
+  if (!invoice) throw notFound('Invoice not found');
+  const { payment, error } = await collectInvoice(invoice, { phone: req.valid.body.phone, by: `platform ${req.platform.slug}` });
+  if (error) return res.status(502).json({ error });
+  res.status(201).json({ invoice: invoice.number, payment: { id: payment.id, status: payment.status, amount: payment.amount } });
 });
 
 export default router;

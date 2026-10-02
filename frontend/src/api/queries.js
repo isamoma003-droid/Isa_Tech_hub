@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, queryString } from './client.js';
+import { API_URL, api, queryString } from './client.js';
 
 export const useStats = () => useQuery({ queryKey: ['stats'], queryFn: () => api('/stats'), refetchInterval: 30_000 });
 
@@ -34,3 +34,20 @@ export function useAction(fn, invalidate = []) {
     onSuccess: () => Promise.all(invalidate.map((queryKey) => queryClient.invalidateQueries({ queryKey }))),
   });
 }
+
+// Whether the API answers. Polling it also keeps a free Render service awake while the dashboard is open.
+export const useHealth = () =>
+  useQuery({
+    queryKey: ['health'],
+    queryFn: async () => {
+      const res = await fetch(`${API_URL}/health`, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+    refetchInterval: 60_000,
+    retry: false,
+  });
+
+export const useBilling = () => useQuery({ queryKey: ['billing'], queryFn: () => api('/billing'), refetchInterval: 60_000 });
+export const useInvoices = (filters) =>
+  useQuery({ queryKey: ['invoices', filters], queryFn: () => api(`/invoices${queryString(filters)}`), placeholderData: keepPreviousData });

@@ -33,10 +33,19 @@ export function createApp() {
   // doesn't look like an error.
   const clientDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../frontend/dist');
   if (process.env.SERVE_CLIENT === 'true' && fs.existsSync(clientDist)) {
-    app.use(express.static(clientDist, { index: false, maxAge: '1h' }));
+    app.use(
+      express.static(clientDist, {
+        index: false,
+        maxAge: '1h',
+        // The service worker and manifest must update as soon as the dashboard is redeployed.
+        setHeaders: (res, file) => {
+          if (/(sw\.js|manifest\.webmanifest)$/.test(file)) res.setHeader('Cache-Control', 'no-cache');
+        },
+      }),
+    );
     app.get('/{*path}', (_req, res) => res.sendFile(path.join(clientDist, 'index.html')));
   } else {
-    app.get('/', (_req, res) => res.json({ service: 'ISA Tech Hub API', status: 'ok', health: '/health' }));
+    app.get('/', (_req, res) => res.json({ service: 'IsaPay API (ISA Tech Hub)', status: 'ok', health: '/health' }));
   }
 
   app.use(notFoundHandler);

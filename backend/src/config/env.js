@@ -51,4 +51,25 @@ export const env = {
   workers: process.env.WORKERS !== 'false' && !isTest,
   sweepEveryMs: number('SWEEP_EVERY_MS', 30_000),
   webhookEveryMs: number('WEBHOOK_EVERY_MS', 10_000),
+  // Render's free plan puts a service to sleep after 15 minutes without incoming requests, and a
+  // sleeping Hub misses Safaricom's callbacks. Until the service is on a paid (always-on) plan, it
+  // pings its own public address so it never looks idle. On by default on Render; KEEP_ALIVE=false
+  // turns it off (do that once you're on the Starter plan), KEEP_ALIVE=true turns it on elsewhere.
+  keepAlive: process.env.KEEP_ALIVE ? process.env.KEEP_ALIVE === 'true' : Boolean(process.env.RENDER_EXTERNAL_URL) && !isTest,
+  keepAliveEveryMs: number('KEEP_ALIVE_EVERY_MINUTES', 10) * 60_000,
+  // What IsaPay charges, unless a platform has its own price (Platforms → Billing). Platforms on a
+  // till of yours pay a percentage of what they receive; partners on their own till pay a monthly
+  // subscription. The first BILLING_FREE_AMOUNT shillings of payments each month are free.
+  billing: {
+    percent: number('BILLING_PERCENT', 1.5),
+    monthlyFee: number('BILLING_MONTHLY_FEE', 1000),
+    freeAmount: number('BILLING_FREE_AMOUNT', 10_000),
+    // A subscription invoice is due this many days after the month ends; the platform can't start
+    // new payments once it's this many days overdue (an admin can extend that per platform).
+    dueDays: number('BILLING_DUE_DAYS', 7),
+    graceDays: number('BILLING_GRACE_DAYS', 14),
+    // The first month that is invoiced (YYYY-MM). By default, the month this version first ran,
+    // so nobody is billed for months before billing existed.
+    startMonth: process.env.BILLING_START_MONTH || null,
+  },
 };

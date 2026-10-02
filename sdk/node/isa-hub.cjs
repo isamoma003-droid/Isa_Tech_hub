@@ -1,5 +1,5 @@
 'use strict';
-// ISA Tech Hub client for a platform's Node.js server (Node 18+, no dependencies).
+// IsaPay (ISA Tech Hub) client for a platform's Node.js server (Node 18+, no dependencies).
 // Copy this one file into your project. It works from CommonJS and from ES modules:
 //
 //   const { IsaHub, verifyWebhook } = require('./isa-hub.cjs');   // CommonJS (egertickets)
@@ -45,7 +45,7 @@ class IsaHub {
         signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (err) {
-      throw new IsaHubError(`Could not reach ISA Tech Hub: ${err.message}`, { status: 0 });
+      throw new IsaHubError(`Could not reach IsaPay: ${err.message}`, { status: 0 });
     }
     let data = null;
     try {
@@ -54,7 +54,7 @@ class IsaHub {
       // empty or non-JSON body
     }
     if (!res.ok) {
-      throw new IsaHubError(data?.error || `ISA Tech Hub answered HTTP ${res.status}`, {
+      throw new IsaHubError(data?.error || `IsaPay answered HTTP ${res.status}`, {
         status: res.status,
         details: data?.details,
         payment: data?.payment,
@@ -119,4 +119,5 @@ function verifyWebhook({ secret, rawBody, signature, toleranceSeconds = 300 }) {
   return JSON.parse(body);
 }
 
-module.exports = { IsaHub, IsaHubError, verifyWebhook };
+// IsaPay is the gateway's new name; IsaHub stays for platforms already using it.
+module.exports = { IsaHub, IsaPay: IsaHub, IsaHubError, verifyWebhook };

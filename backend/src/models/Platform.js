@@ -39,6 +39,22 @@ const platformSchema = new Schema(
     apiKeyHash: { type: String, select: false, unique: true, sparse: true },
     apiKeyHint: String,
     apiKeyCreatedAt: Date,
+    // What IsaPay charges this platform (services/billing.js). "auto": nothing for your own
+    // platforms, a percentage on an ISA till, a monthly subscription on the partner's own till.
+    // Empty prices use the BILLING_* defaults.
+    billing: {
+      plan: { type: String, enum: ['auto', 'exempt', 'percent', 'subscription'], default: 'auto' },
+      percent: { type: Number, min: 0, max: 100 },
+      monthlyFee: { type: Number, min: 0 },
+      freeAmount: { type: Number, min: 0 },
+      // The M-Pesa number that gets the prompt for subscription invoices, and who to write to.
+      phone: { type: String, trim: true, maxlength: 20 },
+      email: { type: String, trim: true, lowercase: true, maxlength: 120 },
+      // An admin can let an overdue platform keep taking payments until this date.
+      graceUntil: Date,
+    },
+    // The platform IsaPay uses to collect its own subscription invoices.
+    system: { type: Boolean, default: false },
   },
   { timestamps: true },
 );
@@ -85,6 +101,16 @@ platformSchema.methods.toPublic = function toPublic() {
     apiKeyHint: this.apiKeyHint || null,
     apiKeyCreatedAt: this.apiKeyCreatedAt || null,
     till: till?.toPublic ? till.toPublic() : till ? String(till) : null,
+    billing: {
+      plan: this.billing?.plan || 'auto',
+      percent: this.billing?.percent ?? null,
+      monthlyFee: this.billing?.monthlyFee ?? null,
+      freeAmount: this.billing?.freeAmount ?? null,
+      phone: this.billing?.phone || '',
+      email: this.billing?.email || '',
+      graceUntil: this.billing?.graceUntil || null,
+    },
+    system: Boolean(this.system),
     createdAt: this.createdAt,
   };
 };

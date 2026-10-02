@@ -41,6 +41,12 @@ const STATUS = {
   delivered: { icon: CircleCheck, label: 'Delivered', tone: 'paid' },
   active: { icon: CircleCheck, label: 'Active', tone: 'paid' },
   disabled: { icon: CircleX, label: 'Disabled', tone: 'failed' },
+  open: { icon: Clock, label: 'Unpaid', tone: 'pending' },
+  overdue: { icon: AlertTriangle, label: 'Overdue', tone: 'disputed' },
+  suspended: { icon: CircleX, label: 'Suspended', tone: 'failed' },
+  waived: { icon: CircleCheck, label: 'Waived (free tier)', tone: 'paid' },
+  void: { icon: CircleX, label: 'Void', tone: 'void' },
+  ok: { icon: CircleCheck, label: 'In good standing', tone: 'paid' },
 };
 
 export function StatusBadge({ status }) {
@@ -124,5 +130,17 @@ export function PageHeader({ title, subtitle, actions }) {
       </div>
       {actions && <div className="page-actions">{actions}</div>}
     </header>
+  );
+}
+
+export function CodeBlock({ title, code }) {
+  return (
+    <div className="code-block">
+      <div className="code-head">
+        <span>{title}</span>
+        <CopyButton value={code} />
+      </div>
+      <pre>{code}</pre>
+    </div>
   );
 }

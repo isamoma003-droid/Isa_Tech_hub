@@ -45,3 +45,7 @@ export function timeAgo(date) {
 }
 
 export const percent = (ratio) => (ratio === null || ratio === undefined ? '—' : `${Math.round(ratio * 100)}%`);
+
+// "2026-09" → "Sep 2026".
+export const formatPeriod = (period) =>
+  period ? new Date(`${period}-15T12:00:00+03:00`).toLocaleDateString('en-KE', { timeZone: TIME_ZONE, month: 'short', year: 'numeric' }) : '—';

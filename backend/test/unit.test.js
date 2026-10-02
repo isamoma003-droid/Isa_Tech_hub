@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { Till } from '../src/models/Till.js';
+import { Till, envSuffix } from '../src/models/Till.js';
+import { feeFor, resolvePlan } from '../src/services/billing.js';
+import { startKeepAlive } from '../src/services/keepAlive.js';
 import { parseCallback, setDarajaTransport, stkQuery } from '../src/services/daraja.js';
 import { decryptSecret, encryptSecret, signWebhook, verifyWebhookSignature } from '../src/utils/crypto.js';
 import { maskPhone, normalizePhone } from '../src/utils/phone.js';
-import { darajaTimestamp, kenyaDay, startOfKenyaDay } from '../src/utils/time.js';
+import { darajaTimestamp, kenyaDay, monthRange, previousMonth, startOfKenyaDay } from '../src/utils/time.js';
 
 describe('phone numbers', () => {
   test('normalizes the usual Kenyan formats', () => {
@@ -134,5 +136,65 @@ describe('Daraja', () => {
     } finally {
       setDarajaTransport(null);
     }
+  });
+});
+
+describe('numbered tills', () => {
+  test('till 1 uses the plain variable names, till N adds _N', () => {
+    assert.equal(envSuffix(1), '');
+    assert.equal(envSuffix(2), '_2');
+    assert.equal(envSuffix(12), '_12');
+    const till = new Till({ name: 'Two', kind: 'paybill', environment: 'sandbox', shortcode: '600000', slot: 2 });
+    assert.equal(till.toPublic().label, 'M-Pesa till 2');
+    assert.equal(till.toPublic().envSuffix, '_2');
+  });
+});
+
+describe('keep-alive', () => {
+  test('pings the public address on a timer, and never localhost', async (t) => {
+    t.mock.timers.enable({ apis: ['setInterval'] });
+    const calls = [];
+    const stop = startKeepAlive({ url: 'https://hub.test/health', everyMs: 600_000, fetchFn: async (url) => (calls.push(url), { ok: true }) });
+    t.mock.timers.tick(600_000);
+    t.mock.timers.tick(600_000);
+    await Promise.resolve();
+    assert.deepEqual(calls, ['https://hub.test/health', 'https://hub.test/health']);
+    stop();
+    t.mock.timers.tick(600_000);
+    assert.equal(calls.length, 2);
+
+    const local = [];
+    startKeepAlive({ url: 'http://localhost:5100/health', fetchFn: async (url) => local.push(url) })();
+    assert.equal(local.length, 0);
+  });
+});
+
+describe('billing', () => {
+  const pricing = { plan: 'percent', percent: 1.5, monthlyFee: 1000, freeAmount: 10_000 };
+
+  test('a percentage above the free amount', () => {
+    assert.equal(feeFor(pricing, { amount: 8000 }), 0);
+    assert.equal(feeFor(pricing, { amount: 30_000 }), 300);
+    assert.equal(feeFor({ ...pricing, freeAmount: 0 }, { amount: 333 }), 5);
+  });
+
+  test('a subscription unless the month stays under the free amount', () => {
+    const sub = { ...pricing, plan: 'subscription' };
+    assert.equal(feeFor(sub, { amount: 10_000 }), 0);
+    assert.equal(feeFor(sub, { amount: 10_001 }), 1000);
+    assert.equal(feeFor({ ...pricing, plan: 'exempt' }, { amount: 1e6 }), 0);
+  });
+
+  test('the plan follows whose platform and whose till', () => {
+    assert.equal(resolvePlan({ ownership: 'own' }, { owner: 'isa' }).plan, 'exempt');
+    assert.equal(resolvePlan({ ownership: 'partner' }, { owner: 'isa' }).plan, 'percent');
+    assert.equal(resolvePlan({ ownership: 'partner' }, { owner: 'partner' }).plan, 'subscription');
+    assert.equal(resolvePlan({ ownership: 'own', billing: { plan: 'subscription', monthlyFee: 500 } }, {}).monthlyFee, 500);
+  });
+
+  test('Kenyan months', () => {
+    assert.equal(previousMonth('2026-01'), '2025-12');
+    assert.equal(monthRange('2026-10').start.toISOString(), '2026-09-30T21:00:00.000Z');
+    assert.equal(monthRange('2026-12').end.toISOString(), '2026-12-31T21:00:00.000Z');
   });
 });

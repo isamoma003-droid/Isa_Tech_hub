@@ -20,4 +20,5 @@ export default [
     },
   },
   { files: ['vite.config.js'], languageOptions: { globals: globals.node } },
+  { files: ['public/sw.js'], languageOptions: { globals: globals.serviceworker } },
 ];

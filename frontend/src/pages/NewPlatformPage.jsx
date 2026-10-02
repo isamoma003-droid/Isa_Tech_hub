@@ -23,7 +23,7 @@ export default function NewPlatformPage() {
             The platform's server sends this as <code>Authorization: Bearer …</code>. Keep it out of browsers and apps. Lost it? Issue a new one from the platform's page.
           </SecretReveal>
           <SecretReveal title="Webhook signing secret" value={created.webhookSecret}>
-            The platform uses this to check that webhooks really come from the Hub.
+            The platform uses this to check that webhooks really come from IsaPay.
           </SecretReveal>
           <div className="form-actions">
             <Link to={`/platforms/${created.platform.id}`} className="btn btn-primary">
@@ -40,7 +40,7 @@ export default function NewPlatformPage() {
       <Link to="/platforms" className="back">
         <ArrowLeft size={16} aria-hidden="true" /> Platforms
       </Link>
-      <PageHeader title="Add a platform" subtitle="A site or app that will take M-Pesa payments through the Hub." />
+      <PageHeader title="Add a platform" subtitle="A site or app that will take M-Pesa payments through IsaPay — your own platforms or a partner using IsaPay as their payment gateway." />
       <div className="card">
         <PlatformForm submitLabel="Create platform" busy={create.isPending} error={create.error} onSubmit={(body) => create.mutate(body, { onSuccess: setCreated })} />
       </div>
