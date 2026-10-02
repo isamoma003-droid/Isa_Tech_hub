@@ -35,6 +35,8 @@ function TillForm({ till, canEdit }) {
   const save = useAction((body) => api(`/tills/${till.id}`, { method: 'PATCH', body }), [['till', till.id], ['tills'], ['platforms']]);
   const check = useAction(() => api(`/tills/${till.id}/check`, { method: 'POST' }));
 
+  // "M-Pesa consumer key 2": the till's number keeps its keys apart from other tills'.
+  const n = (label) => (till.slot ? `${label} ${till.slot}` : label);
   const set = (key) => (event) => {
     const value = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
     setForm((current) => ({ ...current, [key]: value }));
@@ -115,7 +117,7 @@ function TillForm({ till, canEdit }) {
 
         <section className="card">
           <div className="card-head">
-            <h2>Daraja keys</h2>
+            <h2>{till.slot ? `Daraja keys for till ${till.slot}` : 'Daraja keys'}</h2>
             {canEdit && (
               <button type="button" className="btn btn-ghost btn-small" onClick={() => check.mutate()} disabled={check.isPending}>
                 <ShieldCheck size={14} aria-hidden="true" /> {check.isPending ? 'Checking…' : 'Check Daraja sign-in'}
@@ -127,16 +129,27 @@ function TillForm({ till, canEdit }) {
               ? `Stored and encrypted${till.consumerKeyHint ? `; the consumer key ends ${till.consumerKeyHint}` : ''}. They are never shown. Fill a box only to replace that key.`
               : 'Missing: fill in all three.'}
           </p>
+          {till.envVariables?.length > 0 && (
+            <p className="hint">
+              On Render: {till.envVariables.map((name, i) => (
+                <span key={name}>
+                  {i > 0 && ', '}
+                  <code>{name}</code>
+                </span>
+              ))}
+              .
+            </p>
+          )}
           {check.data && <div className={`notice ${check.data.ok ? 'notice-ok' : 'notice-error'}`}>{check.data.message}</div>}
           <ErrorMessage error={check.error} title="Couldn't check" />
           <div className="form-grid">
-            <Field label="Consumer key">
+            <Field label={n('M-Pesa consumer key')}>
               <input type="password" autoComplete="off" value={keys.consumerKey} onChange={setKey('consumerKey')} placeholder="Leave blank to keep" />
             </Field>
-            <Field label="Consumer secret">
+            <Field label={n('M-Pesa consumer secret')}>
               <input type="password" autoComplete="off" value={keys.consumerSecret} onChange={setKey('consumerSecret')} placeholder="Leave blank to keep" />
             </Field>
-            <Field label="Passkey" hint="Lipa na M-Pesa Online passkey, issued for the store number.">
+            <Field label={n('M-Pesa passkey')} hint="Lipa na M-Pesa Online passkey, issued for the store number.">
               <input type="password" autoComplete="off" value={keys.passkey} onChange={setKey('passkey')} placeholder="Leave blank to keep" />
             </Field>
           </div>
@@ -189,8 +202,9 @@ export default function TillPage() {
   return (
     <>
       <Link to="/tills" className="back">
-        <ArrowLeft size={16} aria-hidden="true" /> Tills
+        <ArrowLeft size={16} aria-hidden="true" /> M-Pesa tills
       </Link>
+      {till.slot && <span className="slot-chip">{till.label}</span>}
       <PageHeader
         title={till.name}
         subtitle={`Customers pay ${till.kind === 'till' ? 'till' : 'Paybill'} ${till.payNumber} · ${till.environment === 'production' ? 'live' : 'sandbox'} · updated ${formatDateTime(till.updatedAt)}`}
@@ -215,7 +229,7 @@ export default function TillPage() {
           : 'no platform yet'}
         .
         {till.source === 'env' &&
-          ' This till also comes from the MPESA_* variables on Render: a change made here stays until someone changes the matching variable there.'}
+          ` This till also comes from the MPESA_*${till.envSuffix || ''} variables on Render: a change made here stays until someone changes the matching variable there.`}
       </p>
       <TillForm key={till.id} till={till} canEdit={canEdit} />
     </>

@@ -15,7 +15,7 @@ import { Payment } from '../src/models/Payment.js';
 import { Till } from '../src/models/Till.js';
 import { WebhookDelivery } from '../src/models/WebhookDelivery.js';
 import { callbacksIdle } from '../src/routes/mpesa.js';
-import { bootstrapAdmin, syncTillFromEnv } from '../src/services/bootstrap.js';
+import { assignSlots, bootstrapAdmin, syncTillFromEnv, syncTillsFromEnv } from '../src/services/bootstrap.js';
 import { setDarajaTransport } from '../src/services/daraja.js';
 import { sweepPendingPayments } from '../src/services/payments.js';
 import { deliverDueWebhooks } from '../src/services/webhooks.js';
@@ -634,6 +634,89 @@ describe('ISA Tech Hub API', { skip: !uri && 'set MONGODB_URI_TEST to run the AP
       body: { password: body.password, kind: 'till', shortcode: '600111', tillNumber: '5551234', passkey: 'the-passkey' },
     });
     assert.equal(restored.body.till.payNumber, '5551234');
+  });
+
+  test('numbered MPESA_*_N variables each manage their own till, never another one', async () => {
+    // Tills from before numbering get a number first; the variables then use the next free one.
+    await assignSlots();
+    assert.ok(await Till.exists({ _id: till._id, slot: { $exists: true } }), 'tills from before numbering get a number');
+    const n = await Till.nextSlot();
+    const vars = {
+      MPESA_ENV: 'production',
+      MPESA_SHORTCODE: '700333',
+      MPESA_TILL_NUMBER: '8885678',
+      MPESA_CONSUMER_KEY: 'key-1',
+      MPESA_CONSUMER_SECRET: 'secret-1',
+      MPESA_PASSKEY: 'passkey-3',
+      [`MPESA_SHORTCODE_${n}`]: '710000',
+      [`MPESA_CONSUMER_KEY_${n}`]: 'key-two',
+      [`MPESA_CONSUMER_SECRET_${n}`]: 'secret-two',
+      [`MPESA_PASSKEY_${n}`]: 'passkey-two',
+      [`MPESA_TILL_NAME_${n}`]: 'Partner Paybill',
+      [`MPESA_ENV_${n}`]: 'sandbox',
+    };
+    const results = await syncTillsFromEnv(vars);
+    const second = results.find((r) => r.till.slot === n);
+    assert.equal(second.action, 'created');
+    assert.equal(second.till.name, 'Partner Paybill');
+    assert.equal(second.till.kind, 'paybill');
+    assert.equal(second.till.environment, 'sandbox');
+    const one = await Till.findOne({ slot: 1 }).select('+consumerKey +consumerSecret +passkey');
+    const two = await Till.findById(second.till._id).select('+consumerKey +consumerSecret +passkey');
+    assert.equal(one.source, 'env');
+    assert.equal(one.credentials().consumerKey, 'key-1', 'till 1 keeps its own consumer key');
+    assert.equal(two.credentials().consumerKey, 'key-two');
+
+    // Rotating till N's key leaves till 1 alone.
+    const rotated = (await syncTillsFromEnv({ ...vars, [`MPESA_CONSUMER_KEY_${n}`]: 'key-two-b' })).find((r) => r.till.slot === n);
+    assert.deepEqual(rotated.changed, ['consumerKey']);
+    assert.equal((await Till.findById(one._id).select('+consumerKey')).credentials().consumerKey, 'key-1');
+
+    // Tills listed with their number and the variables that manage them.
+    const listed = await request('GET', '/api/admin/tills', { token: adminToken });
+    const shown = listed.body.tills.find((t) => t.slot === n);
+    assert.equal(shown.label, `M-Pesa till ${n}`);
+    assert.ok(shown.envVariables.includes(`MPESA_CONSUMER_KEY_${n}`));
+  });
+
+  test('admins can add a till in the dashboard; it gets the next number', async () => {
+    const body = {
+      password: 'correct horse battery',
+      name: 'Shop till',
+      kind: 'till',
+      environment: 'production',
+      shortcode: '720000',
+      tillNumber: '7201234',
+      consumerKey: 'shop-key',
+      consumerSecret: 'shop-secret',
+      passkey: 'shop-passkey',
+    };
+    assert.equal((await request('POST', '/api/admin/tills', { token: viewerToken, body })).status, 403);
+    assert.equal((await request('POST', '/api/admin/tills', { token: adminToken, body: { ...body, password: 'nope' } })).status, 403);
+    assert.equal((await request('POST', '/api/admin/tills', { token: adminToken, body: { ...body, tillNumber: '' } })).status, 400);
+
+    const expected = await Till.nextSlot();
+    const created = await request('POST', '/api/admin/tills', { token: adminToken, body });
+    assert.equal(created.status, 201);
+    assert.equal(created.body.till.slot, expected);
+    assert.equal(created.body.till.source, 'dashboard');
+    assert.equal(created.body.till.hasCredentials, true);
+    assert.ok(!JSON.stringify(created.body).includes('shop-secret'), 'keys are never sent back');
+    assert.ok(await AuditLog.exists({ action: 'till.created', 'target.id': created.body.till.id }));
+
+    // Variables with that number don't take over a till they didn't create.
+    const suffix = `_${expected}`;
+    const ignored = await syncTillFromEnv(
+      {
+        [`MPESA_SHORTCODE${suffix}`]: '730000',
+        [`MPESA_CONSUMER_KEY${suffix}`]: 'other',
+        [`MPESA_CONSUMER_SECRET${suffix}`]: 'other',
+        [`MPESA_PASSKEY${suffix}`]: 'other',
+      },
+      expected,
+    );
+    assert.equal(ignored, null);
+    assert.equal((await Till.findById(created.body.till.id)).shortcode, '720000');
   });
 
   test('changing your password signs out other sessions', async () => {

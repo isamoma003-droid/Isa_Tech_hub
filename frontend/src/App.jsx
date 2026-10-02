@@ -4,8 +4,10 @@ import { Spinner } from './components/ui.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import AccountPage from './pages/AccountPage.jsx';
 import AuditPage from './pages/AuditPage.jsx';
+import DevelopersPage from './pages/DevelopersPage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import NewPlatformPage from './pages/NewPlatformPage.jsx';
+import NewTillPage from './pages/NewTillPage.jsx';
 import OverviewPage from './pages/OverviewPage.jsx';
 import PaymentPage from './pages/PaymentPage.jsx';
 import PaymentsPage from './pages/PaymentsPage.jsx';
@@ -40,7 +42,9 @@ export default function App() {
         <Route path="platforms/new" element={<NewPlatformPage />} />
         <Route path="platforms/:id" element={<PlatformPage />} />
         <Route path="tills" element={<TillsPage />} />
+        <Route path="tills/new" element={<NewTillPage />} />
         <Route path="tills/:id" element={<TillPage />} />
+        <Route path="developers" element={<DevelopersPage />} />
         <Route path="audit" element={<AuditPage />} />
         <Route path="account" element={<AccountPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

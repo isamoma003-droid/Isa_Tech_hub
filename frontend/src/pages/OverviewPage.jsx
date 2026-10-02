@@ -1,14 +1,19 @@
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Clock, Scale, Webhook } from 'lucide-react';
+import { AlertTriangle, CalendarDays, CalendarRange, Clock, Scale, Target, Wallet, Webhook } from 'lucide-react';
 import { useStats } from '../api/queries.js';
 import { DailyChart, PlatformBars } from '../components/Charts.jsx';
 import { Empty, ErrorMessage, PageHeader, Spinner, StatusBadge } from '../components/ui.jsx';
 import { formatDateTime, formatKes, formatNumber, percent } from '../utils/format.js';
 
-function Tile({ label, total }) {
+function Tile({ label, total, icon: Icon }) {
   return (
     <div className="tile">
-      <span className="tile-label">{label}</span>
+      <span className="tile-label">
+        <span className="tile-icon" aria-hidden="true">
+          <Icon size={16} />
+        </span>
+        {label}
+      </span>
       <span className="tile-value">{formatKes(total.amount)}</span>
       <span className="tile-sub">
         {formatNumber(total.count)} payment{total.count === 1 ? '' : 's'}
@@ -31,14 +36,19 @@ export default function OverviewPage() {
 
   return (
     <>
-      <PageHeader title="Overview" subtitle="Money received through the Hub, in Kenya time. Updates every 30 seconds." />
+      <PageHeader title="Overview" subtitle="Money received through IsaPay, in Kenya time. Updates every 30 seconds." />
 
       <section className="tiles">
-        <Tile label="Today" total={totals.today} />
-        <Tile label="Last 7 days" total={totals.week} />
-        <Tile label="Last 30 days" total={totals.month} />
+        <Tile label="Today" total={totals.today} icon={Wallet} />
+        <Tile label="Last 7 days" total={totals.week} icon={CalendarDays} />
+        <Tile label="Last 30 days" total={totals.month} icon={CalendarRange} />
         <div className="tile">
-          <span className="tile-label">Prompts that end in payment</span>
+          <span className="tile-label">
+            <span className="tile-icon" aria-hidden="true">
+              <Target size={16} />
+            </span>
+            Prompts that end in payment
+          </span>
           <span className="tile-value">{percent(successRate)}</span>
           <span className="tile-sub">last 7 days, cancelled and failed included</span>
         </div>

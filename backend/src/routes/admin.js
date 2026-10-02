@@ -10,7 +10,7 @@ import { AdminUser } from '../models/AdminUser.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { PAYMENT_STATUSES, Payment } from '../models/Payment.js';
 import { Platform } from '../models/Platform.js';
-import { Till } from '../models/Till.js';
+import { Till, envSuffix } from '../models/Till.js';
 import { WebhookDelivery } from '../models/WebhookDelivery.js';
 import { audit } from '../services/audit.js';
 import { checkCredentials } from '../services/daraja.js';
@@ -458,6 +458,10 @@ async function tillView(till) {
     hasCredentials: Boolean(till.consumerKey && till.consumerSecret && till.passkey),
     consumerKeyHint,
     callbackUrl: `${env.publicUrl}/mpesa/callback/${till.id}/••••••`,
+    // The host variables that manage this till, e.g. MPESA_CONSUMER_KEY_2 for till 2.
+    envVariables: till.slot
+      ? ['MPESA_ENV', 'MPESA_SHORTCODE', 'MPESA_TILL_NUMBER', 'MPESA_CONSUMER_KEY', 'MPESA_CONSUMER_SECRET', 'MPESA_PASSKEY'].map((name) => `${name}${envSuffix(till.slot)}`)
+      : [],
     platforms: platforms.length,
     platformList: platforms.map((p) => ({ id: p.id, name: p.name, slug: p.slug, status: p.status })),
     updatedAt: till.updatedAt,
@@ -471,7 +475,7 @@ async function findTill(id) {
 }
 
 router.get('/tills', async (_req, res) => {
-  const tills = await Till.find().sort({ createdAt: 1 }).select(TILL_SECRETS);
+  const tills = await Till.find().sort({ slot: 1, createdAt: 1 }).select(TILL_SECRETS);
   res.json({ tills: await Promise.all(tills.map(tillView)) });
 });
 
@@ -506,10 +510,55 @@ const tillUpdateSchema = z.object({
   passkey: secret,
 });
 
-router.patch('/tills/:id', adminOnly, tillEditLimiter, validate(tillUpdateSchema), async (req, res) => {
-  const { password, consumerKey, consumerSecret, passkey, ...fields } = req.valid.body;
+const confirmPassword = async (req, password) => {
   const admin = await AdminUser.findById(req.admin._id).select('+passwordHash');
   if (!(await admin.checkPassword(password))) throw new HttpError(403, 'Your password is wrong, so nothing was changed');
+};
+
+const required = (label) => z.string().trim().min(1, `Enter the ${label}`).max(300);
+const tillCreateSchema = z.object({
+  password: z.string().min(1, 'Enter your password to confirm'),
+  name: z.string().trim().min(2, 'Give the till a name').max(60),
+  kind: z.enum(['till', 'paybill']),
+  environment: z.enum(['sandbox', 'production']),
+  shortcode: digits('The store / Paybill number'),
+  tillNumber: z.union([z.literal(''), digits('The till number')]).optional(),
+  consumerKey: required('consumer key'),
+  consumerSecret: required('consumer secret'),
+  passkey: required('passkey'),
+});
+
+// Adds a till with the next free number ("M-Pesa till 2"), so its keys never overlap with
+// another till's.
+router.post('/tills', adminOnly, tillEditLimiter, validate(tillCreateSchema), async (req, res) => {
+  const { password, consumerKey, consumerSecret, passkey, tillNumber, ...fields } = req.valid.body;
+  await confirmPassword(req, password);
+  if (fields.kind === 'till' && !tillNumber) throw badRequest('A Buy Goods till needs its till number');
+
+  let till;
+  for (let attempt = 0; ; attempt += 1) {
+    till = new Till({ ...fields, tillNumber: fields.kind === 'till' ? tillNumber : undefined, source: 'dashboard', slot: await Till.nextSlot() });
+    till.setCredentials({ consumerKey, consumerSecret, passkey });
+    try {
+      await till.save();
+      break;
+    } catch (err) {
+      // Two admins adding a till at once: take the next number.
+      if (err?.code !== 11000 || attempt >= 3) throw err;
+    }
+  }
+  await audit(req, 'till.created', { type: 'till', id: till.id, label: till.name }, {
+    slot: till.slot,
+    kind: till.kind,
+    environment: till.environment,
+    payNumber: till.payNumber,
+  });
+  res.status(201).json({ till: await tillView(await findTill(till.id)) });
+});
+
+router.patch('/tills/:id', adminOnly, tillEditLimiter, validate(tillUpdateSchema), async (req, res) => {
+  const { password, consumerKey, consumerSecret, passkey, ...fields } = req.valid.body;
+  await confirmPassword(req, password);
 
   const till = await findTill(req.params.id);
   const before = { name: till.name, kind: till.kind, environment: till.environment, shortcode: till.shortcode, tillNumber: till.tillNumber || null, active: till.active };

@@ -51,4 +51,10 @@ export const env = {
   workers: process.env.WORKERS !== 'false' && !isTest,
   sweepEveryMs: number('SWEEP_EVERY_MS', 30_000),
   webhookEveryMs: number('WEBHOOK_EVERY_MS', 10_000),
+  // Render's free plan puts a service to sleep after 15 minutes without incoming requests, and a
+  // sleeping Hub misses Safaricom's callbacks. Until the service is on a paid (always-on) plan, it
+  // pings its own public address so it never looks idle. On by default on Render; KEEP_ALIVE=false
+  // turns it off (do that once you're on the Starter plan), KEEP_ALIVE=true turns it on elsewhere.
+  keepAlive: process.env.KEEP_ALIVE ? process.env.KEEP_ALIVE === 'true' : Boolean(process.env.RENDER_EXTERNAL_URL) && !isTest,
+  keepAliveEveryMs: number('KEEP_ALIVE_EVERY_MINUTES', 10) * 60_000,
 };

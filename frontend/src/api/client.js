@@ -46,7 +46,7 @@ async function send(path, { method = 'GET', body } = {}) {
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch {
-    throw new ApiError(0, 'Cannot reach the Hub. Check your connection and that the API is running.');
+    throw new ApiError(0, 'Cannot reach IsaPay. Check your connection and that the API is running.');
   }
 }
 

@@ -117,7 +117,7 @@ export default function PlatformForm({ initial, submitLabel, onSubmit, busy, err
         </div>
         <Field
           label="Webhook URL"
-          hint="The Hub posts payment.paid, payment.failed and payment.disputed here, signed with the platform's webhook secret."
+          hint="IsaPay posts payment.paid, payment.failed and payment.disputed here, signed with the platform's webhook secret."
           error={fieldError('webhookUrl')}
         >
           <input type="url" value={form.webhookUrl} onChange={set('webhookUrl')} placeholder="https://api.a-read.example/api/payments/hub-webhook" />

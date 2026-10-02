@@ -24,8 +24,14 @@ const tillSchema = new Schema(
     // Makes this till's callback URL unguessable, so strangers can't post fake results.
     callbackSecret: { type: String, select: false, default: () => randomToken(24) },
     active: { type: Boolean, default: true },
-    // env: created from the MPESA_* variables on the host (one till). cli: added with scripts/till.js.
-    source: { type: String, enum: ['env', 'cli'] },
+    // The till's number: "M-Pesa till 1", "M-Pesa till 2"… Its Daraja keys are labelled the same
+    // way ("M-Pesa consumer key 2"), and on the host it's managed by the variables with the same
+    // number: MPESA_CONSUMER_KEY for till 1, MPESA_CONSUMER_KEY_2 for till 2, and so on. So keys
+    // for different tills never overlap.
+    slot: { type: Number, min: 1, max: 99, unique: true, sparse: true },
+    // env: created from the MPESA_* variables on the host. cli: added with scripts/till.js.
+    // dashboard: added by an admin in the dashboard.
+    source: { type: String, enum: ['env', 'cli', 'dashboard'] },
     // The MPESA_* values last applied to this till (secrets as fingerprints). On start-up only the
     // variables that changed since are applied, so edits made in the dashboard aren't undone.
     envApplied: { type: Schema.Types.Mixed, select: false },
@@ -52,6 +58,16 @@ tillSchema.methods.credentials = function credentials() {
   };
 };
 
+// The next free till number.
+tillSchema.statics.nextSlot = async function nextSlot() {
+  const last = await this.findOne({ slot: { $exists: true } }).sort({ slot: -1 }).select('slot');
+  return (last?.slot || 0) + 1;
+};
+
+// The suffix of the host variables for till `slot`: '' for till 1 (MPESA_CONSUMER_KEY), '_2' for
+// till 2 (MPESA_CONSUMER_KEY_2)…
+export const envSuffix = (slot) => (!slot || slot === 1 ? '' : `_${slot}`);
+
 // What a payer types in the M-Pesa menu.
 tillSchema.virtual('payNumber').get(function payNumber() {
   return this.kind === 'till' ? this.tillNumber : this.shortcode;
@@ -67,6 +83,9 @@ tillSchema.methods.toPublic = function toPublic() {
     tillNumber: this.tillNumber || null,
     payNumber: this.payNumber,
     active: this.active,
+    slot: this.slot || null,
+    label: this.slot ? `M-Pesa till ${this.slot}` : null,
+    envSuffix: this.slot ? envSuffix(this.slot) : null,
     source: this.source || null,
     createdAt: this.createdAt,
   };

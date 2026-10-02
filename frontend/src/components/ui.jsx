@@ -126,3 +126,15 @@ export function PageHeader({ title, subtitle, actions }) {
     </header>
   );
 }
+
+export function CodeBlock({ title, code }) {
+  return (
+    <div className="code-block">
+      <div className="code-head">
+        <span>{title}</span>
+        <CopyButton value={code} />
+      </div>
+      <pre>{code}</pre>
+    </div>
+  );
+}

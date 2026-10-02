@@ -121,7 +121,7 @@ export default function PaymentPage() {
                 <code className="small">{JSON.stringify(payment.metadata)}</code>
               </Row>
             )}
-            <Row label="Hub payment id">
+            <Row label="IsaPay payment id">
               <span className="mono small">{payment.id}</span>
             </Row>
           </dl>

@@ -53,7 +53,7 @@ export default function PaymentsPage() {
     <>
       <PageHeader
         title="Payments"
-        subtitle="Every M-Pesa prompt the Hub has sent, newest first."
+        subtitle="Every M-Pesa prompt IsaPay has sent, newest first."
         actions={
           <button type="button" className="btn btn-ghost" onClick={exportCsv}>
             <Download size={16} aria-hidden="true" />

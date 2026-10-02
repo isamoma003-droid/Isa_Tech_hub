@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { Till } from '../src/models/Till.js';
+import { Till, envSuffix } from '../src/models/Till.js';
+import { startKeepAlive } from '../src/services/keepAlive.js';
 import { parseCallback, setDarajaTransport, stkQuery } from '../src/services/daraja.js';
 import { decryptSecret, encryptSecret, signWebhook, verifyWebhookSignature } from '../src/utils/crypto.js';
 import { maskPhone, normalizePhone } from '../src/utils/phone.js';
@@ -134,5 +135,35 @@ describe('Daraja', () => {
     } finally {
       setDarajaTransport(null);
     }
+  });
+});
+
+describe('numbered tills', () => {
+  test('till 1 uses the plain variable names, till N adds _N', () => {
+    assert.equal(envSuffix(1), '');
+    assert.equal(envSuffix(2), '_2');
+    assert.equal(envSuffix(12), '_12');
+    const till = new Till({ name: 'Two', kind: 'paybill', environment: 'sandbox', shortcode: '600000', slot: 2 });
+    assert.equal(till.toPublic().label, 'M-Pesa till 2');
+    assert.equal(till.toPublic().envSuffix, '_2');
+  });
+});
+
+describe('keep-alive', () => {
+  test('pings the public address on a timer, and never localhost', async (t) => {
+    t.mock.timers.enable({ apis: ['setInterval'] });
+    const calls = [];
+    const stop = startKeepAlive({ url: 'https://hub.test/health', everyMs: 600_000, fetchFn: async (url) => (calls.push(url), { ok: true }) });
+    t.mock.timers.tick(600_000);
+    t.mock.timers.tick(600_000);
+    await Promise.resolve();
+    assert.deepEqual(calls, ['https://hub.test/health', 'https://hub.test/health']);
+    stop();
+    t.mock.timers.tick(600_000);
+    assert.equal(calls.length, 2);
+
+    const local = [];
+    startKeepAlive({ url: 'http://localhost:5100/health', fetchFn: async (url) => local.push(url) })();
+    assert.equal(local.length, 0);
   });
 });

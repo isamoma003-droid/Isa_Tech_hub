@@ -1,7 +1,7 @@
-// Tills are managed on the server, not in the dashboard, so a stolen dashboard password can't send
-// customers' money to a different till. The simplest way is the MPESA_* environment variables on
-// the host (see .env.example): the till is created or updated when the server starts. This script
-// is for everything else: more than one till, a partner's till, deactivating, rotating secrets. Run from backend/ with the production MONGODB_URI and
+// Tills can be added in the dashboard (Tills → Add till) or from the MPESA_* environment variables
+// on the host (see .env.example: MPESA_*_2 for till 2, and so on), which are applied when the
+// server starts. This script is for everything else: a till without the dashboard, deactivating,
+// rotating secrets. Run from backend/ with the production MONGODB_URI and
 // HUB_SECRET_KEY in .env. Daraja credentials are read from the environment, never from the
 // command line (where they would land in your shell history):
 //
@@ -58,6 +58,7 @@ async function add() {
       : { name: opts.name, kind: opts.kind, environment: opts.env, shortcode: opts.shortcode, tillNumber: opts.till },
   );
   till.source = 'cli';
+  till.slot = await Till.nextSlot();
   if (opts.sandbox) creds.passkey ||= SANDBOX.passkey;
   if (!opts.sandbox && !['till', 'paybill'].includes(opts.kind)) fail('--kind must be "till" (Buy Goods) or "paybill"');
   if (!opts.sandbox && !['sandbox', 'production'].includes(opts.env)) fail('--env must be "sandbox" or "production"');
@@ -66,9 +67,9 @@ async function add() {
   }
   till.setCredentials(creds);
   await till.save();
-  await audit(by, 'till.created', { type: 'till', id: till.id, label: till.name }, { kind: till.kind, environment: till.environment, payNumber: till.payNumber });
+  await audit(by, 'till.created', { type: 'till', id: till.id, label: till.name }, { slot: till.slot, kind: till.kind, environment: till.environment, payNumber: till.payNumber });
   console.log(`
-  Added ${till.environment} ${till.kind === 'till' ? 'Buy Goods till' : 'Paybill'} "${till.name}"
+  Added M-Pesa till ${till.slot}: ${till.environment} ${till.kind === 'till' ? 'Buy Goods till' : 'Paybill'} "${till.name}"
     id:           ${till.id}
     signs with:   ${till.shortcode}
     customers pay ${till.payNumber}
@@ -79,13 +80,13 @@ async function add() {
 }
 
 async function list() {
-  const tills = await Till.find().sort({ createdAt: 1 }).select('+consumerKey +consumerSecret +passkey');
+  const tills = await Till.find().sort({ slot: 1, createdAt: 1 }).select('+consumerKey +consumerSecret +passkey');
   if (!tills.length) return console.log('\n  No tills yet. Add one with: npm run till -- add …\n');
   console.log('');
   for (const till of tills) {
     const platforms = await Platform.find({ till: till._id }).select('slug');
     const ready = till.consumerKey && till.consumerSecret && till.passkey;
-    console.log(`  ${till.active ? '●' : '○'} ${till.id}  ${till.name}`);
+    console.log(`  ${till.active ? '●' : '○'} ${till.id}  ${till.slot ? `M-Pesa till ${till.slot}: ` : ''}${till.name}`);
     console.log(`      ${till.environment} ${till.kind}, signs with ${till.shortcode}, customers pay ${till.payNumber}`);
     console.log(`      credentials: ${ready ? 'set' : 'MISSING'}; platforms: ${platforms.map((p) => p.slug).join(', ') || 'none'}`);
   }
