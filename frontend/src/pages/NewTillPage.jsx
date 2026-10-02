@@ -6,7 +6,7 @@ import { useAction, useTills } from '../api/queries.js';
 import { ErrorMessage, Field, PageHeader } from '../components/ui.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 
-const EMPTY = { name: '', kind: 'till', environment: 'production', shortcode: '', tillNumber: '', consumerKey: '', consumerSecret: '', passkey: '' };
+const EMPTY = { name: '', kind: 'till', environment: 'production', owner: 'isa', shortcode: '', tillNumber: '', consumerKey: '', consumerSecret: '', passkey: '' };
 
 export default function NewTillPage() {
   const { canEdit } = useAuth();
@@ -55,6 +55,19 @@ export default function NewTillPage() {
                 <select value={form.environment} onChange={set('environment')}>
                   <option value="production">Live (real money)</option>
                   <option value="sandbox">Sandbox (test money)</option>
+                </select>
+              </Field>
+              <Field
+                label="Whose till"
+                hint={
+                  form.owner === 'partner'
+                    ? 'Money goes to the partner. Partners on it pay IsaPay a monthly subscription.'
+                    : 'Money lands with you. Partners on it pay IsaPay a percentage.'
+                }
+              >
+                <select value={form.owner} onChange={set('owner')}>
+                  <option value="isa">ISA Tech (yours)</option>
+                  <option value="partner">A partner's own till</option>
                 </select>
               </Field>
             </div>

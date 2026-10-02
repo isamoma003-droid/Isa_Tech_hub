@@ -8,17 +8,19 @@ import { requireAdmin, requireRole, signAdminToken } from '../middleware/adminAu
 import { validate } from '../middleware/validate.js';
 import { AdminUser } from '../models/AdminUser.js';
 import { AuditLog } from '../models/AuditLog.js';
+import { INVOICE_STATUSES, Invoice } from '../models/Invoice.js';
 import { PAYMENT_STATUSES, Payment } from '../models/Payment.js';
 import { Platform } from '../models/Platform.js';
 import { Till, envSuffix } from '../models/Till.js';
 import { WebhookDelivery } from '../models/WebhookDelivery.js';
 import { audit } from '../services/audit.js';
+import { billingStanding, closeMonth, collectInvoice, estimate, resolvePlan } from '../services/billing.js';
 import { checkCredentials } from '../services/daraja.js';
 import { checkPayment } from '../services/payments.js';
 import { resendPaymentWebhook, sendTestWebhook } from '../services/webhooks.js';
 import { HttpError, badRequest, conflict, notFound, unauthorized } from '../utils/httpError.js';
 import { maskPhone, normalizePhone } from '../utils/phone.js';
-import { TIME_ZONE, startOfKenyaDay } from '../utils/time.js';
+import { TIME_ZONE, kenyaMonth, previousMonth, startOfKenyaDay } from '../utils/time.js';
 
 const router = Router();
 const adminOnly = requireRole('admin');
@@ -86,7 +88,7 @@ router.get('/stats', async (_req, res) => {
       { $group: { _id: null, amount: { $sum: received }, count: { $sum: 1 } } },
     ]).then(([row]) => ({ amount: row?.amount || 0, count: row?.count || 0 }));
 
-  const [today, week, month, allTime, daily, byPlatform, outcomes, pending, disputed, failedWebhooks, recent] = await Promise.all([
+  const [today, week, month, allTime, daily, byPlatform, outcomes, pending, disputed, failedWebhooks, recent, overdueInvoices] = await Promise.all([
     sumSince(since.today),
     sumSince(since.week),
     sumSince(since.month),
@@ -115,6 +117,7 @@ router.get('/stats', async (_req, res) => {
     Payment.countDocuments({ status: 'disputed' }),
     WebhookDelivery.countDocuments({ status: 'failed' }),
     Payment.find().sort({ createdAt: -1 }).limit(8).populate('platform', 'name slug'),
+    Invoice.countDocuments({ kind: 'subscription', status: 'open', dueAt: { $lt: new Date() } }),
   ]);
 
   const platforms = await Platform.find({ _id: { $in: byPlatform.map((row) => row._id) } }).select('name slug');
@@ -138,7 +141,7 @@ router.get('/stats', async (_req, res) => {
       count: row.count,
     })),
     successRate: settled ? (outcome.paid || 0) / settled : null,
-    attention: { pending, disputed, failedWebhooks },
+    attention: { pending, disputed, failedWebhooks, overdueInvoices },
     recent: recent.map((p) => p.toAdminRow()),
   });
 });
@@ -364,7 +367,7 @@ async function platformStats(ids) {
 router.get('/platforms', async (_req, res) => {
   const platforms = await Platform.find().sort({ createdAt: 1 }).populate('till');
   const stats = await platformStats(platforms.map((p) => p._id));
-  res.json({ platforms: platforms.map((p) => ({ ...p.toPublic(), stats: stats(p._id) })) });
+  res.json({ platforms: platforms.map((p) => ({ ...p.toPublic(), stats: stats(p._id), pricing: resolvePlan(p) })) });
 });
 
 router.get('/platforms/:id', async (req, res) => {
@@ -375,7 +378,21 @@ router.get('/platforms/:id', async (req, res) => {
     WebhookDelivery.find({ platform: platform._id }).sort({ createdAt: -1 }).limit(8).select('-body -history'),
     WebhookDelivery.find({ platform: platform._id, status: 'failed' }).sort({ createdAt: -1 }).limit(20).select('-body -history'),
   ]);
-  res.json({ platform: { ...platform.toPublic(), stats: stats(platform._id) }, deliveries, failedDeliveries });
+  const [current, standing, invoices] = await Promise.all([
+    estimate(platform),
+    billingStanding(platform),
+    Invoice.find({ platform: platform._id }).sort({ period: -1 }).limit(12),
+  ]);
+  res.json({
+    platform: { ...platform.toPublic(), stats: stats(platform._id), pricing: current.pricing },
+    billing: {
+      currentMonth: { period: current.period, volume: current.volume, estimatedFee: current.fee },
+      standing: { state: standing.state, suspendAt: standing.suspendAt || null },
+      invoices: invoices.map((invoice) => invoice.toPublic()),
+    },
+    deliveries,
+    failedDeliveries,
+  });
 });
 
 router.post('/platforms', adminOnly, validate(createPlatformSchema), async (req, res) => {
@@ -501,6 +518,7 @@ const tillUpdateSchema = z.object({
   name: z.string().trim().min(2, 'Give the till a name').max(60).optional(),
   kind: z.enum(['till', 'paybill']).optional(),
   environment: z.enum(['sandbox', 'production']).optional(),
+  owner: z.enum(['isa', 'partner']).optional(),
   shortcode: digits('The store / Paybill number').optional(),
   tillNumber: z.union([z.literal(''), digits('The till number')]).optional(),
   active: z.boolean().optional(),
@@ -521,6 +539,7 @@ const tillCreateSchema = z.object({
   name: z.string().trim().min(2, 'Give the till a name').max(60),
   kind: z.enum(['till', 'paybill']),
   environment: z.enum(['sandbox', 'production']),
+  owner: z.enum(['isa', 'partner']).default('isa'),
   shortcode: digits('The store / Paybill number'),
   tillNumber: z.union([z.literal(''), digits('The till number')]).optional(),
   consumerKey: required('consumer key'),
@@ -551,6 +570,7 @@ router.post('/tills', adminOnly, tillEditLimiter, validate(tillCreateSchema), as
     slot: till.slot,
     kind: till.kind,
     environment: till.environment,
+    owner: till.owner,
     payNumber: till.payNumber,
   });
   res.status(201).json({ till: await tillView(await findTill(till.id)) });
@@ -561,7 +581,15 @@ router.patch('/tills/:id', adminOnly, tillEditLimiter, validate(tillUpdateSchema
   await confirmPassword(req, password);
 
   const till = await findTill(req.params.id);
-  const before = { name: till.name, kind: till.kind, environment: till.environment, shortcode: till.shortcode, tillNumber: till.tillNumber || null, active: till.active };
+  const before = {
+    name: till.name,
+    kind: till.kind,
+    environment: till.environment,
+    owner: till.owner || 'isa',
+    shortcode: till.shortcode,
+    tillNumber: till.tillNumber || null,
+    active: till.active,
+  };
 
   if (fields.kind === 'paybill') fields.tillNumber = '';
   if (fields.tillNumber !== undefined) fields.tillNumber = fields.tillNumber || undefined;
@@ -596,6 +624,171 @@ router.post('/tills/:id/check', adminOnly, async (req, res) => {
   } catch (err) {
     res.json({ ok: false, message: err.message });
   }
+});
+
+// --- Billing ---------------------------------------------------------------------------------
+// What IsaPay earns from the platforms (services/billing.js).
+
+const money = z.coerce.number().min(0, 'Use 0 or more').max(10_000_000);
+const billingSchema = z.object({
+  plan: z.enum(['auto', 'exempt', 'percent', 'subscription']),
+  // Empty means "use the default".
+  percent: z.union([z.null(), z.coerce.number().min(0).max(100, 'A percentage, 0–100')]).optional(),
+  monthlyFee: z.union([z.null(), money]).optional(),
+  freeAmount: z.union([z.null(), money]).optional(),
+  phone: z.union([z.literal(''), z.string().trim().refine((value) => normalizePhone(value), 'Billing phone: a Kenyan mobile number')]).optional(),
+  email: z.union([z.literal(''), z.string().trim().email('Billing email looks wrong')]).optional(),
+  graceUntil: z.union([z.null(), z.literal(''), z.coerce.date()]).optional(),
+});
+
+router.put('/platforms/:id/billing', adminOnly, validate(billingSchema), async (req, res) => {
+  const platform = await Platform.findById(objectId(req.params.id, 'Platform not found')).populate('till');
+  if (!platform) throw notFound('Platform not found');
+  const body = req.valid.body;
+  const before = platform.toPublic().billing;
+  const next = {
+    plan: body.plan,
+    percent: body.percent ?? undefined,
+    monthlyFee: body.monthlyFee ?? undefined,
+    freeAmount: body.freeAmount ?? undefined,
+    phone: body.phone ? normalizePhone(body.phone) : undefined,
+    email: body.email || undefined,
+    graceUntil: body.graceUntil || undefined,
+  };
+  platform.billing = next;
+  await platform.save();
+  const after = platform.toPublic().billing;
+  const changes = Object.fromEntries(
+    Object.keys(after)
+      .filter((key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]))
+      .map((key) => [key, { from: before[key], to: after[key] }]),
+  );
+  if (Object.keys(changes).length) await audit(req, 'platform.billing_changed', { type: 'platform', id: platform.id, label: platform.slug }, changes);
+  res.json({ platform: { ...platform.toPublic(), pricing: resolvePlan(platform) } });
+});
+
+router.get('/billing', async (_req, res) => {
+  const period = kenyaMonth();
+  const platforms = await Platform.find({ system: { $ne: true } }).sort({ createdAt: 1 }).populate('till');
+  const rows = await Promise.all(
+    platforms.map(async (platform) => {
+      const [current, standing] = await Promise.all([estimate(platform, period), billingStanding(platform)]);
+      return {
+        platform: { id: platform.id, name: platform.name, slug: platform.slug, ownership: platform.ownership },
+        till: platform.till ? { name: platform.till.name, owner: platform.till.owner || 'isa', label: platform.till.toPublic().label } : null,
+        pricing: current.pricing,
+        volume: current.volume,
+        estimatedFee: current.fee,
+        standing: standing.state,
+        suspendAt: standing.suspendAt || null,
+      };
+    }),
+  );
+  const yearStart = `${period.slice(0, 4)}-01`;
+  const [earned, outstanding, payouts] = await Promise.all([
+    Invoice.aggregate([
+      { $match: { status: 'paid', period: { $gte: yearStart } } },
+      { $group: { _id: '$kind', amount: { $sum: '$fee' }, count: { $sum: 1 } } },
+    ]),
+    Invoice.aggregate([
+      { $match: { status: 'open' } },
+      { $group: { _id: { $lt: ['$dueAt', new Date()] }, amount: { $sum: '$fee' }, count: { $sum: 1 } } },
+    ]),
+    Invoice.aggregate([{ $match: { payoutStatus: 'pending' } }, { $group: { _id: null, amount: { $sum: '$payout' }, count: { $sum: 1 } } }]),
+  ]);
+  const pick = (rowsIn, id) => {
+    const row = rowsIn.find((r) => r._id === id);
+    return { amount: row?.amount || 0, count: row?.count || 0 };
+  };
+  res.json({
+    period,
+    lastPeriod: previousMonth(period),
+    defaults: env.billing,
+    summary: {
+      thisMonthEstimate: rows.reduce((sum, row) => sum + row.estimatedFee, 0),
+      earnedThisYear: {
+        subscription: pick(earned, 'subscription'),
+        commission: pick(earned, 'commission'),
+      },
+      outstanding: pick(outstanding, false),
+      overdue: pick(outstanding, true),
+      payoutsPending: payouts[0] ? { amount: payouts[0].amount, count: payouts[0].count } : { amount: 0, count: 0 },
+    },
+    platforms: rows,
+  });
+});
+
+const invoiceQuery = z.object({
+  status: z.enum([...INVOICE_STATUSES, 'overdue', 'payout']).optional(),
+  platform: z.string().regex(/^[a-f0-9]{24}$/i).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+});
+
+router.get('/invoices', validate(invoiceQuery, 'query'), async (req, res) => {
+  const { status, platform, page } = req.valid.query;
+  const filter = {};
+  if (status === 'overdue') Object.assign(filter, { status: 'open', dueAt: { $lt: new Date() } });
+  else if (status === 'payout') filter.payoutStatus = 'pending';
+  else if (status) filter.status = status;
+  if (platform) filter.platform = platform;
+  const [invoices, total] = await Promise.all([
+    Invoice.find(filter).sort({ period: -1, createdAt: -1 }).skip((page - 1) * PAGE_SIZE).limit(PAGE_SIZE).populate('platform', 'name slug'),
+    Invoice.countDocuments(filter),
+  ]);
+  res.json({ invoices: invoices.map((invoice) => invoice.toPublic()), total, page, pages: Math.max(1, Math.ceil(total / PAGE_SIZE)) });
+});
+
+// Writes the invoices for a month now, instead of waiting for the hourly check.
+const periodSchema = z.object({ period: z.string().regex(/^\d{4}-\d{2}$/, 'Month as YYYY-MM').optional() });
+router.post('/billing/close-month', adminOnly, validate(periodSchema), async (req, res) => {
+  const period = req.valid.body.period || previousMonth(kenyaMonth());
+  if (period >= kenyaMonth()) throw badRequest('Only a month that has ended can be invoiced');
+  const invoices = await closeMonth(period);
+  await audit(req, 'billing.month_closed', { type: 'billing', id: period, label: period }, { invoices: invoices.length });
+  res.json({ period, invoices: invoices.length });
+});
+
+async function findInvoice(id) {
+  const invoice = await Invoice.findById(objectId(id, 'Invoice not found'));
+  if (!invoice) throw notFound('Invoice not found');
+  return invoice;
+}
+const invoiceTarget = (invoice) => ({ type: 'platform', id: String(invoice.platform), label: invoice.number });
+
+router.post('/invoices/:id/collect', adminOnly, validate(z.object({ phone: z.string().trim().max(20).optional() })), async (req, res) => {
+  const invoice = await findInvoice(req.params.id);
+  const { payment, error } = await collectInvoice(invoice, { phone: req.valid.body.phone, by: req });
+  if (error) return res.status(502).json({ error, payment: payment?.toAdminRow?.() });
+  res.status(201).json({ payment: payment.toAdminRow() });
+});
+
+const noteSchema = z.object({ receipt: z.string().trim().max(40).optional(), note: z.string().trim().max(300).optional() });
+
+router.post('/invoices/:id/mark-paid', adminOnly, validate(noteSchema), async (req, res) => {
+  const invoice = await findInvoice(req.params.id);
+  if (invoice.status !== 'open') throw conflict(`This invoice is already ${invoice.status}`);
+  Object.assign(invoice, { status: 'paid', paidAt: new Date(), receipt: req.valid.body.receipt || undefined, note: req.valid.body.note || invoice.note });
+  await invoice.save();
+  await audit(req, 'invoice.marked_paid', invoiceTarget(invoice), { number: invoice.number, amount: invoice.fee, receipt: invoice.receipt || null });
+  res.json({ invoice: invoice.toPublic() });
+});
+
+router.post('/invoices/:id/void', adminOnly, validate(noteSchema), async (req, res) => {
+  const invoice = await findInvoice(req.params.id);
+  if (invoice.status !== 'open') throw conflict(`This invoice is already ${invoice.status}`);
+  Object.assign(invoice, { status: 'void', note: req.valid.body.note || 'Voided by an admin' });
+  await invoice.save();
+  await audit(req, 'invoice.voided', invoiceTarget(invoice), { number: invoice.number, amount: invoice.fee, note: invoice.note });
+  res.json({ invoice: invoice.toPublic() });
+});
+
+router.post('/invoices/:id/payout', adminOnly, validate(z.object({ reference: z.string().trim().min(1, 'Enter the M-Pesa or bank reference').max(100) })), async (req, res) => {
+  const invoice = await findInvoice(req.params.id);
+  if (invoice.payoutStatus !== 'pending') throw conflict('There is no payout waiting on this invoice');
+  Object.assign(invoice, { payoutStatus: 'sent', payoutReference: req.valid.body.reference, payoutAt: new Date() });
+  await invoice.save();
+  await audit(req, 'invoice.payout_sent', invoiceTarget(invoice), { number: invoice.number, amount: invoice.payout, reference: invoice.payoutReference });
+  res.json({ invoice: invoice.toPublic() });
 });
 
 // --- Audit log -------------------------------------------------------------------------------

@@ -7,11 +7,12 @@ import { ErrorMessage, Field, PageHeader, Spinner, StatusBadge } from '../compon
 import { useAuth } from '../context/AuthContext.jsx';
 import { formatDateTime } from '../utils/format.js';
 
-const NUMBER_FIELDS = ['name', 'kind', 'environment', 'shortcode', 'tillNumber', 'active'];
+const NUMBER_FIELDS = ['name', 'kind', 'environment', 'owner', 'shortcode', 'tillNumber', 'active'];
 const CHANGE_LABELS = {
   name: 'name',
   kind: 'type',
   environment: 'environment',
+  owner: 'owner',
   shortcode: 'store number',
   tillNumber: 'till number',
   active: 'on/off',
@@ -22,6 +23,7 @@ const fromTill = (till) => ({
   name: till.name,
   kind: till.kind,
   environment: till.environment,
+  owner: till.owner || 'isa',
   shortcode: till.shortcode,
   tillNumber: till.tillNumber || '',
   active: till.active,
@@ -84,6 +86,12 @@ function TillForm({ till, canEdit }) {
               <select value={form.environment} onChange={set('environment')}>
                 <option value="production">Live (real money)</option>
                 <option value="sandbox">Sandbox (test money)</option>
+              </select>
+            </Field>
+            <Field label="Whose till" hint="Decides how partners on this till pay IsaPay: a percentage on yours, a subscription on theirs.">
+              <select value={form.owner} onChange={set('owner')}>
+                <option value="isa">ISA Tech (yours)</option>
+                <option value="partner">A partner's own till</option>
               </select>
             </Field>
           </div>

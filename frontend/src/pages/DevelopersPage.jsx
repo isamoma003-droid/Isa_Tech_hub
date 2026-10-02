@@ -14,6 +14,8 @@ const ENDPOINTS = [
   ['POST', '/v1/payments', 'Start a payment: sends the M-Pesa PIN prompt to the payer'],
   ['GET', '/v1/payments/:id', 'Current state of a payment (asks Safaricom when the callback is late)'],
   ['GET', '/v1/payments?reference=&status=&limit=', 'The platform’s own payments'],
+  ['GET', '/v1/billing', 'The platform’s IsaPay plan, fees so far this month, and its invoices'],
+  ['POST', '/v1/billing/invoices/:number/pay', 'Pay an IsaPay subscription invoice: sends an M-Pesa prompt to { phone }'],
 ];
 
 const SAMPLES = {
@@ -194,7 +196,7 @@ export default function DevelopersPage() {
         <p className="hint">
           <code>status</code> is one of <code>pending</code>, <code>paid</code>, <code>failed</code> or <code>disputed</code>. <code>POST /v1/payments</code>{' '}
           answers 201 (prompt sent), 200 with <code>"replayed": true</code> (same Idempotency-Key), 409 when the phone already has a prompt waiting,
-          and 502 when M-Pesa refuses the request.
+          502 when M-Pesa refuses the request, and 402 when the platform's IsaPay subscription is overdue past its grace period.
         </p>
       </section>
 

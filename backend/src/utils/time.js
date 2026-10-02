@@ -25,3 +25,20 @@ export function startOfKenyaDay(daysAgo = 0, now = new Date()) {
   const [y, m, d] = kenyaDay(now).split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d - daysAgo, -3));
 }
+
+// The calendar month in Kenya, as YYYY-MM.
+export function kenyaMonth(date = new Date()) {
+  return kenyaDay(date).slice(0, 7);
+}
+
+// The first moment of `period` (YYYY-MM) in Kenya and the first moment of the next month.
+export function monthRange(period) {
+  const [y, m] = period.split('-').map(Number);
+  return { start: new Date(Date.UTC(y, m - 1, 1, -3)), end: new Date(Date.UTC(y, m, 1, -3)) };
+}
+
+// The month before `period`, as YYYY-MM.
+export function previousMonth(period) {
+  const [y, m] = period.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 2, 15)).toISOString().slice(0, 7);
+}

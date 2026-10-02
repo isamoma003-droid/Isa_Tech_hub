@@ -47,3 +47,7 @@ export const useHealth = () =>
     refetchInterval: 60_000,
     retry: false,
   });
+
+export const useBilling = () => useQuery({ queryKey: ['billing'], queryFn: () => api('/billing'), refetchInterval: 60_000 });
+export const useInvoices = (filters) =>
+  useQuery({ queryKey: ['invoices', filters], queryFn: () => api(`/invoices${queryString(filters)}`), placeholderData: keepPreviousData });

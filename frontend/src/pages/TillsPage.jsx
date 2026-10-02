@@ -52,6 +52,10 @@ export default function TillsPage() {
               </p>
               <dl className="kv kv-tight">
                 <div className="kv-row">
+                  <dt>Whose till</dt>
+                  <dd>{t.owner === 'partner' ? 'A partner’s (subscription billing)' : 'ISA Tech’s (percentage billing)'}</dd>
+                </div>
+                <div className="kv-row">
                   <dt>Environment</dt>
                   <dd>{t.environment === 'production' ? 'Live' : 'Sandbox (test money)'}</dd>
                 </div>

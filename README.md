@@ -51,6 +51,22 @@ Each platform keeps its own data (bookings, books, organizer payouts). The Hub h
 
   For each field, the latest change wins: a dashboard edit survives restarts, and a later change to the matching `MPESA_*` variable on Render is applied on the next start.
 
+## Making money: IsaPay billing
+
+IsaPay charges the partner platforms that use it. Your own platforms (ownership "own", e.g. egertickets and A-Read) pay nothing.
+
+| Partner's money lands in | How they pay IsaPay | Collected |
+| --- | --- | --- |
+| **Your till** (till owner "ISA Tech") | **1.5%** of each payment received | At once: the money is already in your till. You send the partner the rest; **Billing → Payouts to send** lists it, and **Payout sent** records the reference. |
+| **Their own till** (till owner "a partner") | **KES 1,000 a month** subscription | Invoiced after the month ends. **Request M-Pesa** sends a prompt to the partner's billing number, paid into your ISA till; the invoice is marked paid automatically. **Mark paid** records a payment made another way. |
+
+- **Free tier:** the first KES 10,000 of payments each month is free: no percentage on it, and no subscription for a month that stays under it.
+- **Unpaid subscriptions:** due 7 days after the month ends, shown as overdue on the dashboard; 14 days after that, the platform's `POST /v1/payments` answers **402** until it pays. **Extra grace until** on the platform's page lets it keep going while you sort it out.
+- **Invoices are written automatically** within an hour of a month ending (or press **Invoice <month> now**). Each month is invoiced once per platform, and every invoice action is in the audit log. Billing starts with the month this version is first deployed, so nobody is billed for earlier months (`BILLING_START_MONTH=YYYY-MM` changes that).
+- **Prices:** defaults come from `BILLING_PERCENT`, `BILLING_MONTHLY_FEE`, `BILLING_FREE_AMOUNT`, `BILLING_DUE_DAYS` and `BILLING_GRACE_DAYS` on Render. Any platform can have its own plan and price (**Platforms → a platform → Billing**).
+- **Partners can see and pay their bill** through the API: `GET /v1/billing` and `POST /v1/billing/invoices/<number>/pay` (see the Developers page).
+- Subscription payments are collected through a built-in platform called **IsaPay billing**, created on first use and pointed at your first active ISA till, so they appear under Payments like any other.
+
 ## Repository layout
 
 | Part | Stack |
@@ -68,6 +84,7 @@ backend/src/
   services/payments.js  every payment state change, the background sweep
   services/webhooks.js  signed delivery to platforms, retries
   models/               Till, Platform, Payment, WebhookDelivery, AdminUser, AuditLog
+  services/billing.js   plans, monthly invoices, M-Pesa collection, suspension when unpaid
   services/keepAlive.js keeps a free Render service awake
 backend/scripts/        admin.js (dashboard accounts), till.js (tills and Daraja credentials)
 ```
@@ -176,6 +193,8 @@ All calls are server-to-server with `Authorization: Bearer isa_sk_…`. **Never 
 | `POST /v1/payments` | Start a payment: `{ phone, amount, reference, purpose?, description?, metadata? }`, plus an `Idempotency-Key` header |
 | `GET /v1/payments/:id` | Current state (also asks Safaricom when a payment is pending and the callback is late) |
 | `GET /v1/payments?reference=&status=&limit=` | The platform's own payments |
+| `GET /v1/billing` | The platform's IsaPay plan, fees so far this month, standing and invoices |
+| `POST /v1/billing/invoices/:number/pay` | Pay a subscription invoice: sends an M-Pesa prompt to `{ phone }` (or the billing number) |
 
 A payment looks like this:
 ```json
@@ -185,7 +204,7 @@ A payment looks like this:
   "metadata": {}, "createdAt": "…", "paidAt": "…" }
 ```
 
-`status` is one of `pending`, `paid`, `failed` or `disputed`. `POST /v1/payments` answers `201` (sent) or `200` with `"replayed": true` (same idempotency key). It answers `502` with the failed `payment` when M-Pesa refuses the request, `409` when that phone already has a prompt waiting, and `400` with `details` for invalid input.
+`status` is one of `pending`, `paid`, `failed` or `disputed`. `POST /v1/payments` answers `201` (sent) or `200` with `"replayed": true` (same idempotency key). It answers `502` with the failed `payment` when M-Pesa refuses the request, `402` when the platform's IsaPay subscription is overdue past its grace period, `409` when that phone already has a prompt waiting, and `400` with `details` for invalid input.
 
 **Webhooks** are POSTed as JSON to the platform's webhook URL with these headers:
 - `ISA-Event`
@@ -237,6 +256,7 @@ The API tests run the real app against a real MongoDB, with Safaricom faked and 
 - callbacks: forged, duplicate, wrong-secret, amount mismatch, and a late success after a cancel;
 - the background sweep and the 10-minute give-up;
 - numbered tills from `MPESA_*_N` variables and from the dashboard, and the keep-alive ping;
+- billing: percentage and subscription invoices, the free tier, M-Pesa collection and suspension when unpaid;
 - polling, signed webhooks and their retries;
 - key rotation, disabling a platform and viewer permissions;
 - CSV export, the audit log, and the `sdk/` client.

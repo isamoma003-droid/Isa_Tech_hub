@@ -31,6 +31,12 @@ export default function OverviewPage() {
   const alerts = [
     attention.pending > 0 && { to: '/payments?status=pending', icon: Clock, text: `${attention.pending} waiting for the payer`, tone: 'info' },
     attention.disputed > 0 && { to: '/payments?status=disputed', icon: Scale, text: `${attention.disputed} disputed (amount differs)`, tone: 'warn' },
+    attention.overdueInvoices > 0 && {
+      to: '/billing',
+      icon: AlertTriangle,
+      text: `${attention.overdueInvoices} IsaPay invoice${attention.overdueInvoices === 1 ? '' : 's'} overdue`,
+      tone: 'warn',
+    },
     attention.failedWebhooks > 0 && { to: '/platforms', icon: Webhook, text: `${attention.failedWebhooks} webhook${attention.failedWebhooks === 1 ? '' : 's'} gave up`, tone: 'warn' },
   ].filter(Boolean);
 

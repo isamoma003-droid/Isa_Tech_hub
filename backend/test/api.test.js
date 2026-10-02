@@ -11,15 +11,18 @@ import { connectDb } from '../src/config/db.js';
 import { createApp } from '../src/app.js';
 import { AdminUser } from '../src/models/AdminUser.js';
 import { AuditLog } from '../src/models/AuditLog.js';
+import { Invoice } from '../src/models/Invoice.js';
 import { Payment } from '../src/models/Payment.js';
 import { Till } from '../src/models/Till.js';
 import { WebhookDelivery } from '../src/models/WebhookDelivery.js';
 import { callbacksIdle } from '../src/routes/mpesa.js';
 import { assignSlots, bootstrapAdmin, syncTillFromEnv, syncTillsFromEnv } from '../src/services/bootstrap.js';
 import { setDarajaTransport } from '../src/services/daraja.js';
+import { closeMonth } from '../src/services/billing.js';
 import { sweepPendingPayments } from '../src/services/payments.js';
 import { deliverDueWebhooks } from '../src/services/webhooks.js';
 import { verifyWebhookSignature } from '../src/utils/crypto.js';
+import { kenyaMonth, monthRange, previousMonth } from '../src/utils/time.js';
 
 const uri = process.env.MONGODB_URI_TEST;
 const { IsaHub, IsaHubError, verifyWebhook } = createRequire(import.meta.url)('../../sdk/node/isa-hub.cjs');
@@ -717,6 +720,95 @@ describe('ISA Tech Hub API', { skip: !uri && 'set MONGODB_URI_TEST to run the AP
     );
     assert.equal(ignored, null);
     assert.equal((await Till.findById(created.body.till.id)).shortcode, '720000');
+  });
+
+  test('billing: a % on an ISA till, a subscription on a partner till, suspension when unpaid', async () => {
+    const partnerTill = new Till({ name: 'Partner own till', kind: 'paybill', environment: 'production', shortcode: '740000', owner: 'partner', slot: 90 });
+    partnerTill.setCredentials({ consumerKey: 'pk', consumerSecret: 'ps', passkey: 'pp' });
+    await partnerTill.save();
+    const add = async (slug, tillId) =>
+      (await request('POST', '/api/admin/platforms', { token: adminToken, body: { name: slug, slug, till: tillId, ownership: 'partner' } })).body;
+    const onIsa = await add('shop-on-isa', till.id);
+    const onOwn = await add('shop-own-till', partnerTill.id);
+    // Created last month, so last month is billed.
+    const last = previousMonth(kenyaMonth());
+    const { start } = monthRange(last);
+    await Promise.all(
+      [onIsa, onOwn].map((p) => mongoose.model('Platform').collection.updateOne({ _id: new mongoose.Types.ObjectId(p.platform.id) }, { $set: { createdAt: start } })),
+    );
+
+    const shown = await request('GET', `/api/admin/platforms/${onIsa.platform.id}`, { token: adminToken });
+    assert.equal(shown.body.platform.pricing.plan, 'percent');
+    assert.equal((await request('GET', `/api/admin/platforms/${onOwn.platform.id}`, { token: adminToken })).body.platform.pricing.plan, 'subscription');
+
+    const paidLastMonth = (platformId, tillId, amount, n) =>
+      Payment.create({
+        platform: platformId,
+        till: tillId,
+        reference: `last-${platformId}-${n}`,
+        phone: '254700000009',
+        amount,
+        status: 'paid',
+        paidAt: new Date(start.getTime() + 5 * 864e5),
+      });
+    await paidLastMonth(onIsa.platform.id, till.id, 30_000, 1);
+    await paidLastMonth(onOwn.platform.id, partnerTill.id, 20_000, 1);
+
+    assert.equal((await request('POST', '/api/admin/billing/close-month', { token: viewerToken, body: { period: last } })).status, 403);
+    // Months before billing started are never invoiced.
+    assert.deepEqual(await closeMonth(last), []);
+    await AuditLog.updateMany({ action: 'billing.started' }, { $set: { 'details.period': last } });
+    const closed = await request('POST', '/api/admin/billing/close-month', { token: adminToken, body: { period: last } });
+    assert.equal(closed.status, 200);
+    const commission = await Invoice.findOne({ platform: onIsa.platform.id, period: last });
+    assert.equal(commission.kind, 'commission');
+    assert.equal(commission.fee, 300, '1.5% of the KES 20,000 above the free KES 10,000');
+    assert.equal(commission.payout, 29_700);
+    assert.equal(commission.payoutStatus, 'pending');
+    const subscription = await Invoice.findOne({ platform: onOwn.platform.id, period: last });
+    assert.equal(subscription.kind, 'subscription');
+    assert.equal(subscription.fee, 1000);
+    assert.equal(subscription.status, 'open');
+    await request('POST', '/api/admin/billing/close-month', { token: adminToken, body: { period: last } });
+    assert.equal(await Invoice.countDocuments({ platform: onOwn.platform.id }), 1, 'a month is invoiced once');
+
+    // Overdue past the grace period: no new payments until it's paid or an admin extends the grace.
+    await Invoice.updateOne({ _id: subscription._id }, { $set: { dueAt: new Date(Date.now() - 15 * 864e5) } });
+    const blocked = await pay({ phone: nextPhone(), amount: 10, reference: 'while-overdue' }, {}, onOwn.apiKey);
+    assert.equal(blocked.status, 402);
+    assert.match(blocked.body.error, /overdue/);
+    const billingView = await request('GET', '/v1/billing', { token: onOwn.apiKey });
+    assert.equal(billingView.body.standing.state, 'suspended');
+    assert.equal(billingView.body.invoices[0].number, subscription.number);
+
+    const extended = await request('PUT', `/api/admin/platforms/${onOwn.platform.id}/billing`, {
+      token: adminToken,
+      body: { plan: 'auto', phone: '0712000111', graceUntil: new Date(Date.now() + 3 * 864e5).toISOString() },
+    });
+    assert.equal(extended.status, 200);
+    assert.equal(extended.body.platform.billing.phone, '254712000111');
+    assert.equal((await pay({ phone: nextPhone(), amount: 10, reference: 'grace' }, {}, onOwn.apiKey)).status, 201);
+
+    // Collected by M-Pesa prompt into an ISA till; the invoice is paid when the payment is.
+    daraja.reset();
+    const collect = await request('POST', `/api/admin/invoices/${subscription.id}/collect`, { token: adminToken, body: {} });
+    assert.equal(collect.status, 201);
+    assert.equal(daraja.pushes[0].body.Amount, 1000);
+    assert.equal(daraja.pushes[0].body.PhoneNumber, '254712000111');
+    await age(collect.body.payment.id, 60_000);
+    daraja.answers.set(daraja.pushes[0].id, success);
+    await sweepPendingPayments();
+    const settled = await Invoice.findById(subscription._id);
+    assert.equal(settled.status, 'paid');
+    assert.equal(String(settled.payment), collect.body.payment.id);
+    assert.ok(await AuditLog.exists({ action: 'invoice.paid', 'details.number': subscription.number }));
+
+    // Payouts for platforms on an ISA till are marked sent by an admin.
+    const payout = await request('POST', `/api/admin/invoices/${commission.id}/payout`, { token: adminToken, body: { reference: 'BANK-123' } });
+    assert.equal(payout.body.invoice.payoutStatus, 'sent');
+    const summary = await request('GET', '/api/admin/billing', { token: viewerToken });
+    assert.equal(summary.status, 200);
+    assert.ok(summary.body.platforms.some((row) => row.platform.slug === 'shop-own-till'));
   });
 
   test('changing your password signs out other sessions', async () => {

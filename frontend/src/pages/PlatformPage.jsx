@@ -3,10 +3,11 @@ import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, KeyRound, Power, Send, ShieldCheck } from 'lucide-react';
 import { API_URL, api } from '../api/client.js';
 import { useAction, usePlatform } from '../api/queries.js';
+import { BillingSettings, InvoiceTable, PLAN_LABELS, planSummary } from '../components/Billing.jsx';
 import PlatformForm from '../components/PlatformForm.jsx';
 import { CopyButton, ErrorMessage, PageHeader, SecretReveal, Spinner, StatusBadge } from '../components/ui.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
-import { formatDateTime, formatKes, formatNumber, timeAgo } from '../utils/format.js';
+import { formatDateTime, formatKes, formatNumber, formatPeriod, timeAgo } from '../utils/format.js';
 
 // Platforms call the Hub at its origin (/v1/...), the dashboard at /api/admin.
 const HUB_URL = new URL(API_URL).origin;
@@ -63,7 +64,7 @@ export default function PlatformPage() {
 
   if (isPending) return <Spinner />;
   if (error) return <ErrorMessage error={error} />;
-  const { platform, deliveries, failedDeliveries } = data;
+  const { platform, deliveries, failedDeliveries, billing } = data;
   const actionError = toggle.error || rotateKey.error || rotateSecret.error || test.error;
 
   const confirmThen = (message, run) => () => {
@@ -223,6 +224,40 @@ export default function PlatformPage() {
         </div>
         <Integration platform={platform} />
       </section>
+
+      {billing && (
+        <section className="card">
+          <div className="card-head">
+            <div>
+              <h2>Billing</h2>
+              <p className="card-sub">
+                {PLAN_LABELS[platform.pricing.plan]}: {planSummary(platform.pricing)}.
+              </p>
+            </div>
+            <StatusBadge status={billing.standing.state === 'open' ? 'ok' : billing.standing.state} />
+          </div>
+          {billing.standing.state === 'suspended' && (
+            <div className="notice notice-error">This platform can't start new payments until its overdue invoice is paid, or you extend its grace below.</div>
+          )}
+          <dl className="kv kv-tight">
+            <div className="kv-row">
+              <dt>{formatPeriod(billing.currentMonth.period)} so far</dt>
+              <dd>
+                {formatKes(billing.currentMonth.volume.amount)} received · fee if the month ended now:{' '}
+                <strong>{formatKes(billing.currentMonth.estimatedFee)}</strong>
+              </dd>
+            </div>
+          </dl>
+          {billing.invoices.length > 0 && (
+            <>
+              <h3>Invoices</h3>
+              <InvoiceTable invoices={billing.invoices} showPlatform={false} canEdit={canEdit} />
+            </>
+          )}
+          <h3>Price</h3>
+          <BillingSettings key={platform.id} platform={platform} canEdit={canEdit} />
+        </section>
+      )}
 
       <section className="card">
         <div className="card-head">

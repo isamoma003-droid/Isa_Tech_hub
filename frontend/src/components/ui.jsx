@@ -41,6 +41,12 @@ const STATUS = {
   delivered: { icon: CircleCheck, label: 'Delivered', tone: 'paid' },
   active: { icon: CircleCheck, label: 'Active', tone: 'paid' },
   disabled: { icon: CircleX, label: 'Disabled', tone: 'failed' },
+  open: { icon: Clock, label: 'Unpaid', tone: 'pending' },
+  overdue: { icon: AlertTriangle, label: 'Overdue', tone: 'disputed' },
+  suspended: { icon: CircleX, label: 'Suspended', tone: 'failed' },
+  waived: { icon: CircleCheck, label: 'Waived (free tier)', tone: 'paid' },
+  void: { icon: CircleX, label: 'Void', tone: 'void' },
+  ok: { icon: CircleCheck, label: 'In good standing', tone: 'paid' },
 };
 
 export function StatusBadge({ status }) {

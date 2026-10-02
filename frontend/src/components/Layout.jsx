@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Blocks, Code2, CreditCard, Download, History, LayoutDashboard, LogOut, Menu, Smartphone, X } from 'lucide-react';
+import { Blocks, Code2, CreditCard, Download, History, LayoutDashboard, LogOut, Menu, ReceiptText, Smartphone, X } from 'lucide-react';
 import { useHealth } from '../api/queries.js';
 import { BRAND } from '../brand.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -13,6 +13,7 @@ const NAV = [
     links: [
       { to: '/', label: 'Overview', icon: LayoutDashboard, end: true },
       { to: '/payments', label: 'Payments', icon: CreditCard },
+      { to: '/billing', label: 'Billing & revenue', icon: ReceiptText },
     ],
   },
   {

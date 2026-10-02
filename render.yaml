@@ -59,3 +59,10 @@ services:
         value: "true"
       - key: KEEP_ALIVE_EVERY_MINUTES
         value: "10"
+      # IsaPay billing defaults (each platform can have its own price in the dashboard).
+      - key: BILLING_PERCENT
+        value: "1.5"
+      - key: BILLING_MONTHLY_FEE
+        value: "1000"
+      - key: BILLING_FREE_AMOUNT
+        value: "10000"

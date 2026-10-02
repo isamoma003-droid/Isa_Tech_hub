@@ -4,6 +4,7 @@ import { Spinner } from './components/ui.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import AccountPage from './pages/AccountPage.jsx';
 import AuditPage from './pages/AuditPage.jsx';
+import BillingPage from './pages/BillingPage.jsx';
 import DevelopersPage from './pages/DevelopersPage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import NewPlatformPage from './pages/NewPlatformPage.jsx';
@@ -45,6 +46,7 @@ export default function App() {
         <Route path="tills/new" element={<NewTillPage />} />
         <Route path="tills/:id" element={<TillPage />} />
         <Route path="developers" element={<DevelopersPage />} />
+        <Route path="billing" element={<BillingPage />} />
         <Route path="audit" element={<AuditPage />} />
         <Route path="account" element={<AccountPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

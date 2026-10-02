@@ -24,6 +24,9 @@ const tillSchema = new Schema(
     // Makes this till's callback URL unguessable, so strangers can't post fake results.
     callbackSecret: { type: String, select: false, default: () => randomToken(24) },
     active: { type: Boolean, default: true },
+    // Whose till it is. Platforms on an ISA till pay IsaPay a percentage of what they receive (the
+    // money lands with you); platforms on a partner's own till pay a monthly subscription.
+    owner: { type: String, enum: ['isa', 'partner'], default: 'isa' },
     // The till's number: "M-Pesa till 1", "M-Pesa till 2"… Its Daraja keys are labelled the same
     // way ("M-Pesa consumer key 2"), and on the host it's managed by the variables with the same
     // number: MPESA_CONSUMER_KEY for till 1, MPESA_CONSUMER_KEY_2 for till 2, and so on. So keys
@@ -83,6 +86,7 @@ tillSchema.methods.toPublic = function toPublic() {
     tillNumber: this.tillNumber || null,
     payNumber: this.payNumber,
     active: this.active,
+    owner: this.owner || 'isa',
     slot: this.slot || null,
     label: this.slot ? `M-Pesa till ${this.slot}` : null,
     envSuffix: this.slot ? envSuffix(this.slot) : null,

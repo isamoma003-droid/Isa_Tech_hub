@@ -11,10 +11,12 @@
  *   pending → paid | failed | disputed
  *   failed  → paid | disputed      (a late success: the money really moved, so it wins)
  */
+import { Invoice } from '../models/Invoice.js';
 import { Payment } from '../models/Payment.js';
 import { Till } from '../models/Till.js';
 import { HttpError } from '../utils/httpError.js';
 import { DarajaError, stkPush, stkQuery } from './daraja.js';
+import { audit } from './audit.js';
 import { enqueuePaymentEvent } from './webhooks.js';
 
 const TILL_SECRETS = '+consumerKey +consumerSecret +passkey +callbackSecret';
@@ -136,6 +138,7 @@ export async function markPaid(payment, { receipt, paidAmount, source, note }) {
   }
 
   if (updated) {
+    if (updated.status === 'paid' && updated.metadata?.invoiceId) await settleInvoice(updated);
     await enqueuePaymentEvent(updated, updated.status === 'paid' ? 'payment.paid' : 'payment.disputed');
     return { outcome: updated.status, payment: updated };
   }
@@ -147,6 +150,22 @@ export async function markPaid(payment, { receipt, paidAmount, source, note }) {
     });
   }
   return { outcome: 'unchanged', payment: (await Payment.findById(payment._id)) || payment };
+}
+
+// An IsaPay subscription invoice paid by M-Pesa prompt (services/billing.js).
+async function settleInvoice(payment) {
+  const invoice = await Invoice.findOneAndUpdate(
+    { _id: payment.metadata.invoiceId, status: 'open' },
+    { $set: { status: 'paid', paidAt: payment.paidAt, receipt: payment.receipt, payment: payment._id } },
+    { returnDocument: 'after' },
+  ).catch(() => null);
+  if (invoice) {
+    await audit('IsaPay billing', 'invoice.paid', { type: 'platform', id: String(invoice.platform), label: invoice.number }, {
+      number: invoice.number,
+      amount: invoice.fee,
+      receipt: payment.receipt || null,
+    });
+  }
 }
 
 export async function markFailed(payment, { resultCode, resultDesc, source, note }) {

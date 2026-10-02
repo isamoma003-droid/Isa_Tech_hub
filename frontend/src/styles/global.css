@@ -1457,3 +1457,13 @@ a.platform-card:hover {
 .card > h2 + .table-wrap {
   margin-top: 12px;
 }
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 180px;
+}
+.badge-void svg {
+  color: var(--muted);
+}
