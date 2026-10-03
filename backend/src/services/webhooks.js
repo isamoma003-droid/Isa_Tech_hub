@@ -4,6 +4,7 @@ import { env } from '../config/env.js';
 import { Platform } from '../models/Platform.js';
 import { WebhookDelivery } from '../models/WebhookDelivery.js';
 import { randomToken, signWebhook } from '../utils/crypto.js';
+import { assertPublicDestination } from '../utils/network.js';
 
 // Wait before attempt 2, 3, … (about two days in total), then give up and show it in the dashboard.
 export const RETRY_DELAYS_MS = [1, 5, 15, 60, 180, 360, 720, 1440].map((minutes) => minutes * 60_000);
@@ -33,9 +34,14 @@ export async function enqueuePaymentEvent(payment, type) {
   return delivery;
 }
 
-async function post(url, { event, deliveryId, body, secret }) {
+// Merchants choose their own webhook URL, so in production the Hub only posts to it after checking
+// it resolves to the public internet (not this machine or the host's private network).
+const mustBePublic = (platform) => Boolean(platform?.owner) && env.nodeEnv === 'production';
+
+async function post(url, { event, deliveryId, body, secret, publicOnly = false }) {
   const started = Date.now();
   try {
+    if (publicOnly) await assertPublicDestination(url);
     const res = await fetch(url, {
       method: 'POST',
       headers: {
@@ -62,7 +68,7 @@ async function attempt(delivery) {
   const platform = await Platform.findById(delivery.platform).select('+webhookSecret');
   const secret = platform?.webhookSecret ? platform.signingSecret() : '';
   const result = secret
-    ? await post(delivery.url, { event: delivery.event, deliveryId: delivery.id, body: delivery.body, secret })
+    ? await post(delivery.url, { event: delivery.event, deliveryId: delivery.id, body: delivery.body, secret, publicOnly: mustBePublic(platform) })
     : { ok: false, status: null, error: platform ? 'The platform has no webhook signing secret' : 'The platform no longer exists', ms: 0 };
 
   const attempts = delivery.attempts + 1;
@@ -128,5 +134,5 @@ export async function sendTestWebhook(platform) {
     createdAt: new Date().toISOString(),
     data: { platform: platform.slug, message: 'Test event from ISA Tech Hub' },
   });
-  return post(platform.webhookUrl, { event: 'ping', deliveryId, body, secret: platform.signingSecret() });
+  return post(platform.webhookUrl, { event: 'ping', deliveryId, body, secret: platform.signingSecret(), publicOnly: mustBePublic(platform) });
 }

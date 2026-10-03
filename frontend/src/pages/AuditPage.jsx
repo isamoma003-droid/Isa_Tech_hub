@@ -1,9 +1,10 @@
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAudit } from '../api/queries.js';
+import { useAuth } from '../context/AuthContext.jsx';
 import { Empty, ErrorMessage, PageHeader, Pager, Spinner } from '../components/ui.jsx';
 import { formatFullDateTime } from '../utils/format.js';
 
-const TARGET_LINKS = { platform: (id) => `/platforms/${id}`, payment: (id) => `/payments/${id}` };
+const TARGET_LINKS = { platform: (id) => `/platforms/${id}`, payment: (id) => `/payments/${id}`, till: (id) => `/tills/${id}` };
 
 function Details({ details }) {
   if (!details || !Object.keys(details).length) return null;
@@ -24,6 +25,8 @@ function Details({ details }) {
 }
 
 export default function AuditPage() {
+  const { isMerchant, isStaff } = useAuth();
+  const links = isStaff ? { ...TARGET_LINKS, admin: (id) => `/accounts/${id}` } : TARGET_LINKS;
   const [params, setParams] = useSearchParams();
   const target = params.get('target') || '';
   const page = Number(params.get('page')) || 1;
@@ -32,8 +35,14 @@ export default function AuditPage() {
   return (
     <>
       <PageHeader
-        title="Audit log"
-        subtitle={target ? 'Changes to one item.' : 'Every change made from the dashboard or the server command line. Entries cannot be edited.'}
+        title={isMerchant ? 'Activity' : 'Audit log'}
+        subtitle={
+          target
+            ? 'Changes to one item.'
+            : isMerchant
+              ? 'Sign-ins and every change to your account, platforms and tills. Entries cannot be edited.'
+              : 'Every change made from the dashboard or the server command line. Entries cannot be edited.'
+        }
         actions={
           target && (
             <Link to="/audit" className="btn btn-ghost">
@@ -71,8 +80,8 @@ export default function AuditPage() {
                       <Details details={e.details} />
                     </td>
                     <td>
-                      {e.target?.id && TARGET_LINKS[e.target.type] ? (
-                        <Link to={TARGET_LINKS[e.target.type](e.target.id)}>{e.target.label || e.target.id}</Link>
+                      {e.target?.id && links[e.target.type] ? (
+                        <Link to={links[e.target.type](e.target.id)}>{e.target.label || e.target.id}</Link>
                       ) : (
                         e.target?.label || '—'
                       )}

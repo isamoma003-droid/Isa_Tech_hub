@@ -204,12 +204,14 @@ async function isLegacyEnvTill(till) {
  * plain MPESA_* variables becomes till 1, the others follow in the order they were added.
  */
 export async function assignSlots() {
-  if (!(await Till.exists({ slot: { $exists: false } }))) return;
+  // Merchants' own tills stay unnumbered: numbers belong to the host's MPESA_*_N variables.
+  const unnumberedFilter = { slot: { $exists: false }, account: { $exists: false } };
+  if (!(await Till.exists(unnumberedFilter))) return;
   const legacy = await findLegacyEnvTill();
   if (legacy && !legacy.slot && !(await Till.exists({ slot: 1 }))) {
     await Till.updateOne({ _id: legacy._id }, { $set: { slot: 1, source: 'env' } });
   }
-  const unnumbered = await Till.find({ slot: { $exists: false } }).sort({ createdAt: 1 }).select('_id name');
+  const unnumbered = await Till.find(unnumberedFilter).sort({ createdAt: 1 }).select('_id name');
   for (const till of unnumbered) {
     const slot = await Till.nextSlot();
     await Till.updateOne({ _id: till._id, slot: { $exists: false } }, { $set: { slot } });

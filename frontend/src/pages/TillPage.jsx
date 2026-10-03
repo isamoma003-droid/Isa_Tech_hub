@@ -29,7 +29,7 @@ const fromTill = (till) => ({
   active: till.active,
 });
 
-function TillForm({ till, canEdit }) {
+function TillForm({ till, canEdit, isMerchant }) {
   const [form, setForm] = useState(() => fromTill(till));
   const [keys, setKeys] = useState({ consumerKey: '', consumerSecret: '', passkey: '' });
   const [password, setPassword] = useState('');
@@ -88,12 +88,14 @@ function TillForm({ till, canEdit }) {
                 <option value="sandbox">Sandbox (test money)</option>
               </select>
             </Field>
-            <Field label="Whose till" hint="Decides how partners on this till pay IsaPay: a percentage on yours, a subscription on theirs.">
-              <select value={form.owner} onChange={set('owner')}>
-                <option value="isa">ISA Tech (yours)</option>
-                <option value="partner">A partner's own till</option>
-              </select>
-            </Field>
+            {!isMerchant && (
+              <Field label="Whose till" hint="Decides how partners on this till pay IsaPay: a percentage on yours, a subscription on theirs.">
+                <select value={form.owner} onChange={set('owner')}>
+                  <option value="isa">ISA Tech (yours)</option>
+                  <option value="partner">A partner's own till</option>
+                </select>
+              </Field>
+            )}
           </div>
           <div className="form-grid">
             <Field
@@ -200,7 +202,7 @@ function TillForm({ till, canEdit }) {
 
 export default function TillPage() {
   const { id } = useParams();
-  const { canEdit } = useAuth();
+  const { canEdit, isMerchant } = useAuth();
   const { data, isPending, error } = useTill(id);
 
   if (isPending) return <Spinner />;
@@ -236,10 +238,16 @@ export default function TillPage() {
             ))
           : 'no platform yet'}
         .
+        {till.account && !isMerchant && (
+          <>
+            {' '}
+            A merchant's own till: <Link to={`/accounts/${till.account.id}`}>{till.account.name}</Link>.
+          </>
+        )}
         {till.source === 'env' &&
           ` This till also comes from the MPESA_*${till.envSuffix || ''} variables on Render: a change made here stays until someone changes the matching variable there.`}
       </p>
-      <TillForm key={till.id} till={till} canEdit={canEdit} />
+      <TillForm key={till.id} till={till} canEdit={canEdit} isMerchant={isMerchant} />
     </>
   );
 }

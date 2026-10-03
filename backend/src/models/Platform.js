@@ -24,6 +24,9 @@ const platformSchema = new Schema(
     status: { type: String, enum: ['active', 'disabled'], default: 'active', index: true },
     // own: one of your platforms. partner: someone else's, sharing a till by agreement.
     ownership: { type: String, enum: ['own', 'partner'], default: 'own' },
+    // The merchant account that runs this platform and sees it in the dashboard (a partner that
+    // signed up). Empty for platforms run by the ISA Tech team.
+    owner: { type: Schema.Types.ObjectId, ref: 'AdminUser', index: true },
     contact: {
       name: { type: String, trim: true, maxlength: 80 },
       email: { type: String, trim: true, lowercase: true, maxlength: 120 },
@@ -82,7 +85,7 @@ platformSchema.methods.signingSecret = function signingSecret() {
 
 platformSchema.statics.findByApiKey = function findByApiKey(key) {
   if (!key?.startsWith(API_KEY_PREFIX)) return null;
-  return this.findOne({ apiKeyHash: sha256(key) }).populate('till');
+  return this.findOne({ apiKeyHash: sha256(key) }).populate('till').populate('owner', 'role active approval');
 };
 
 platformSchema.methods.toPublic = function toPublic() {
@@ -94,6 +97,10 @@ platformSchema.methods.toPublic = function toPublic() {
     website: this.website || '',
     status: this.status,
     ownership: this.ownership,
+    // The merchant account, with its name when populated.
+    owner: this.owner
+      ? { id: String(this.owner._id || this.owner), name: this.owner.name || '', email: this.owner.email || '', business: this.owner.business?.name || '' }
+      : null,
     contact: { name: this.contact?.name || '', email: this.contact?.email || '', phone: this.contact?.phone || '' },
     notes: this.notes || '',
     accountReference: this.accountReference || '',

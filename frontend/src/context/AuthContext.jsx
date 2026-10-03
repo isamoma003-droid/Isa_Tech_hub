@@ -4,6 +4,10 @@ import { api, onUnauthorized, tokenStore } from '../api/client.js';
 
 const AuthContext = createContext(null);
 
+// Who can do what (the API enforces the same rules):
+//   admin    the ISA Tech team: everything, including approving merchants and pricing.
+//   viewer   the ISA Tech team, read-only.
+//   merchant a business using IsaPay: changes only its own platforms and tills.
 export function AuthProvider({ children }) {
   const queryClient = useQueryClient();
   const [admin, setAdmin] = useState(null);
@@ -25,25 +29,35 @@ export function AuthProvider({ children }) {
       .finally(() => setChecking(false));
   }, []);
 
-  const value = useMemo(
-    () => ({
+  const value = useMemo(() => {
+    // Every sign-in route answers { token, admin }.
+    const start = ({ token, admin: me }) => {
+      queryClient.clear();
+      tokenStore.set(token);
+      setAdmin(me);
+      return me;
+    };
+    const role = admin?.role;
+    return {
       admin,
       checking,
-      canEdit: admin?.role === 'admin',
-      signIn: async (email, password) => {
-        const result = await api('/auth/login', { method: 'POST', body: { email, password } });
-        tokenStore.set(result.token);
-        setAdmin(result.admin);
-      },
-      // After a password change the server issues a new token (others are revoked).
-      replaceSession: ({ token, admin: me }) => {
-        tokenStore.set(token);
-        setAdmin(me);
-      },
+      isMerchant: role === 'merchant',
+      isStaff: role === 'admin' || role === 'viewer',
+      // An ISA Tech admin: approvals, pricing, enabling platforms, the team.
+      isAdmin: role === 'admin',
+      // Can change things at all (merchants: their own).
+      canEdit: role === 'admin' || role === 'merchant',
+      signIn: (email, password) => api('/auth/login', { method: 'POST', body: { email, password } }).then(start),
+      register: (body) => api('/auth/register', { method: 'POST', body }).then(start),
+      googleSignIn: (credential) => api('/auth/google', { method: 'POST', body: { credential } }).then(start),
+      // A password change or reset issues a new token (other sessions are signed out).
+      replaceSession: start,
+      // After a profile change.
+      setAdmin,
+      refresh: () => api('/auth/me').then(({ admin: me }) => setAdmin(me)),
       signOut,
-    }),
-    [admin, checking, signOut],
-  );
+    };
+  }, [admin, checking, signOut, queryClient]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

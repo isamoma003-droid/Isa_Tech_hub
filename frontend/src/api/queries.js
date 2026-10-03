@@ -51,3 +51,11 @@ export const useHealth = () =>
 export const useBilling = () => useQuery({ queryKey: ['billing'], queryFn: () => api('/billing'), refetchInterval: 60_000 });
 export const useInvoices = (filters) =>
   useQuery({ queryKey: ['invoices', filters], queryFn: () => api(`/invoices${queryString(filters)}`), placeholderData: keepPreviousData });
+
+// What the sign-in page can offer: sign-up, Google, email. Public.
+export const useAuthConfig = () => useQuery({ queryKey: ['auth-config'], queryFn: () => api('/auth/config'), staleTime: 5 * 60_000, retry: 1 });
+
+// Staff: the team and the merchants that signed up.
+export const useAccounts = (filters) =>
+  useQuery({ queryKey: ['accounts', filters], queryFn: () => api(`/accounts${queryString(filters)}`), placeholderData: keepPreviousData });
+export const useAccount = (id) => useQuery({ queryKey: ['account', id], queryFn: () => api(`/accounts/${id}`) });

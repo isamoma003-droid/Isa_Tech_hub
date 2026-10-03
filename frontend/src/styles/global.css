@@ -1467,3 +1467,142 @@ a.platform-card:hover {
 .badge-void svg {
   color: var(--muted);
 }
+
+/* --- Accounts: sign-up, Google, approval ----------------------------------------------------- */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.login-card:has(.form-grid-tight) {
+  width: min(460px, 100%);
+}
+.form-grid-tight {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px 12px;
+}
+.google-button {
+  display: flex;
+  justify-content: center;
+  min-height: 44px;
+  color-scheme: normal;
+}
+.or-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.or-divider::before,
+.or-divider::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--border-strong);
+}
+.auth-links {
+  margin: 10px 0 0;
+  text-align: center;
+  font-size: 0.9rem;
+}
+.auth-switch {
+  margin: 18px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  color: var(--ink-2);
+  font-size: 0.92rem;
+}
+.inline-ok,
+.inline-warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.84rem;
+  font-weight: 550;
+}
+.inline-ok {
+  color: var(--good);
+}
+.inline-warn {
+  color: var(--warning);
+}
+.avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.banner {
+  margin: 0;
+  padding: 10px 28px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.banner a {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.banner-info {
+  background: var(--accent-wash);
+}
+.banner-warn {
+  background: var(--warn-wash);
+}
+@media (max-width: 860px) {
+  .banner {
+    padding: 10px 16px;
+  }
+}
+
+.checklist {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.checklist li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.checklist svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--axis);
+}
+.checklist li.done {
+  color: var(--muted);
+}
+.checklist li.done span:not(.sr-only) {
+  text-decoration: line-through;
+  text-decoration-color: var(--axis);
+}
+.checklist li.done svg {
+  color: var(--good);
+}
+
+.card-head:has(.segmented) {
+  flex-wrap: wrap;
+}
+.search-inline {
+  flex: 1 1 220px;
+  max-width: 320px;
+}
+.search-inline input {
+  width: 100%;
+}
+.plain-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+.plain-list li + li {
+  margin-top: 4px;
+}

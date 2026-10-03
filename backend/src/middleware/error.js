@@ -6,6 +6,11 @@ export function notFoundHandler(req, res) {
 }
 
 export function errorHandler(err, req, res, _next) {
+  // Failed after the answer went out (e.g. while sending an email): only log it.
+  if (res.headersSent) {
+    console.error(`[${req.method} ${req.originalUrl}] after the response:`, err);
+    return;
+  }
   let status = 500;
   let message = 'Something went wrong on our side';
   let details;

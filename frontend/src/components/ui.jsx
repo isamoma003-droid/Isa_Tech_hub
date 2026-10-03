@@ -47,6 +47,11 @@ const STATUS = {
   waived: { icon: CircleCheck, label: 'Waived (free tier)', tone: 'paid' },
   void: { icon: CircleX, label: 'Void', tone: 'void' },
   ok: { icon: CircleCheck, label: 'In good standing', tone: 'paid' },
+  // Merchant accounts.
+  'approval-pending': { icon: Clock, label: 'Waiting for approval', tone: 'pending' },
+  'approval-approved': { icon: CircleCheck, label: 'Approved for live payments', tone: 'paid' },
+  'approval-rejected': { icon: CircleX, label: 'Not approved', tone: 'failed' },
+  inactive: { icon: CircleX, label: 'Deactivated', tone: 'failed' },
 };
 
 export function StatusBadge({ status }) {

@@ -86,7 +86,7 @@ def verify(raw_body: bytes, header: str) -> dict:
 };
 
 export default function DevelopersPage() {
-  const { canEdit } = useAuth();
+  const { canEdit, isMerchant } = useAuth();
   const [tab, setTab] = useState('curl');
 
   return (
@@ -101,7 +101,7 @@ export default function DevelopersPage() {
             </a>
             {canEdit && (
               <Link to="/platforms/new" className="btn btn-primary">
-                <Plus size={16} aria-hidden="true" /> Onboard a platform
+                <Plus size={16} aria-hidden="true" /> {isMerchant ? 'Add a platform' : 'Onboard a platform'}
               </Link>
             )}
           </>
@@ -116,22 +116,37 @@ export default function DevelopersPage() {
         </div>
         <p className="card-sub">
           Every call is server-to-server with <code>Authorization: Bearer isa_sk_…</code>. Never put the API key in a browser or a mobile app: it
-          can start payments into your till.
+          can start payments into {isMerchant ? 'your account' : 'your till'}.
         </p>
       </section>
 
       <section className="grid-2">
         <div className="card">
-          <h2>Onboarding a platform</h2>
+          <h2>{isMerchant ? 'Connecting your site or app' : 'Onboarding a platform'}</h2>
           <ol className="steps">
-            <li>
-              In <Link to="/platforms/new">Platforms → Add platform</Link>, choose the M-Pesa till its money goes to and enter its webhook URL.
-              Mark it as a <strong>partner</strong> if it isn't yours.
-            </li>
-            <li>
-              Hand the <strong>API key</strong> (<code>isa_sk_…</code>) and <strong>webhook secret</strong> (<code>whsec_…</code>) to the platform's
-              developers over a safe channel. They're shown once.
-            </li>
+            {isMerchant ? (
+              <>
+                <li>
+                  In <Link to="/platforms/new">Your platforms → Add platform</Link>, choose where the money goes (IsaPay's till, or your own) and enter
+                  your webhook URL.
+                </li>
+                <li>
+                  Store the <strong>API key</strong> (<code>isa_sk_…</code>) and <strong>webhook secret</strong> (<code>whsec_…</code>) on your server
+                  only. They're shown once; you can issue new ones from the platform's page.
+                </li>
+              </>
+            ) : (
+              <>
+                <li>
+                  In <Link to="/platforms/new">Platforms → Add platform</Link>, choose the M-Pesa till its money goes to and enter its webhook URL.
+                  Mark it as a <strong>partner</strong> if it isn't yours.
+                </li>
+                <li>
+                  Hand the <strong>API key</strong> (<code>isa_sk_…</code>) and <strong>webhook secret</strong> (<code>whsec_…</code>) to the platform's
+                  developers over a safe channel. They're shown once. Partners can also sign up themselves and get their own keys.
+                </li>
+              </>
+            )}
             <li>The platform starts payments with the API and marks orders paid when the signed webhook arrives.</li>
             <li>
               Press <strong>Send test webhook</strong> on the platform's page, then make a real KES 1 payment and watch it under{' '}
@@ -196,7 +211,8 @@ export default function DevelopersPage() {
         <p className="hint">
           <code>status</code> is one of <code>pending</code>, <code>paid</code>, <code>failed</code> or <code>disputed</code>. <code>POST /v1/payments</code>{' '}
           answers 201 (prompt sent), 200 with <code>"replayed": true</code> (same Idempotency-Key), 409 when the phone already has a prompt waiting,
-          502 when M-Pesa refuses the request, and 402 when the platform's IsaPay subscription is overdue past its grace period.
+          502 when M-Pesa refuses the request, 402 when the platform's IsaPay subscription is overdue past its grace period, and 403 when the
+          business isn't approved for live payments yet (a sandbox till works before approval).
         </p>
       </section>
 

@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Blocks, Code2, CreditCard, Download, History, LayoutDashboard, LogOut, Menu, ReceiptText, Smartphone, X } from 'lucide-react';
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Blocks, Code2, CreditCard, Download, History, LayoutDashboard, LogOut, Menu, ReceiptText, Smartphone, Users, X } from 'lucide-react';
 import { useHealth } from '../api/queries.js';
 import { BRAND } from '../brand.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useInstallPrompt } from '../pwa.js';
 import { Brand } from './Logo.jsx';
 
-const NAV = [
+// The ISA Tech team sees the whole gateway; a merchant sees its own corner of it.
+const STAFF_NAV = [
   {
     section: 'Money',
     links: [
@@ -24,8 +25,56 @@ const NAV = [
       { to: '/developers', label: 'Developers', icon: Code2 },
     ],
   },
-  { section: 'Security', links: [{ to: '/audit', label: 'Audit log', icon: History }] },
+  {
+    section: 'People & security',
+    links: [
+      { to: '/accounts', label: 'Accounts', icon: Users },
+      { to: '/audit', label: 'Audit log', icon: History },
+    ],
+  },
 ];
+
+const MERCHANT_NAV = [
+  {
+    section: 'Money',
+    links: [
+      { to: '/', label: 'Overview', icon: LayoutDashboard, end: true },
+      { to: '/payments', label: 'Payments', icon: CreditCard },
+      { to: '/billing', label: 'Billing & payouts', icon: ReceiptText },
+    ],
+  },
+  {
+    section: 'Integration',
+    links: [
+      { to: '/platforms', label: 'Your platforms', icon: Blocks },
+      { to: '/tills', label: 'Your M-Pesa tills', icon: Smartphone },
+      { to: '/developers', label: 'Developers', icon: Code2 },
+    ],
+  },
+  { section: 'Account', links: [{ to: '/audit', label: 'Activity', icon: History }] },
+];
+
+const ROLE_LABEL = { admin: 'Admin', viewer: 'Viewer (read-only)', merchant: 'Merchant' };
+
+// Until IsaPay approves a merchant, its live payments wait; sandbox tills work meanwhile.
+function ApprovalBanner({ admin }) {
+  const status = admin.approval?.status;
+  if (admin.role !== 'merchant' || status === 'approved') return null;
+  return (
+    <div className={`banner ${status === 'rejected' ? 'banner-warn' : 'banner-info'}`} role="status">
+      {status === 'rejected' ? (
+        <>
+          {BRAND.name} hasn't approved your business for live payments yet. <Link to="/account">See why and update your details</Link>
+        </>
+      ) : (
+        <>
+          {BRAND.name} is reviewing your business. Set up your platforms and test with a sandbox till meanwhile: live payments start once
+          you're approved. <Link to="/account">Complete your business details</Link>
+        </>
+      )}
+    </div>
+  );
+}
 
 const initials = (name = '') =>
   name
@@ -73,7 +122,8 @@ function InstallButton() {
 }
 
 export default function Layout() {
-  const { admin, signOut } = useAuth();
+  const { admin, isMerchant, signOut } = useAuth();
+  const nav = isMerchant ? MERCHANT_NAV : STAFF_NAV;
   const location = useLocation();
   // The mobile menu stays open only on the page it was opened from, so navigating closes it.
   const [openOn, setOpenOn] = useState(null);
@@ -90,7 +140,7 @@ export default function Layout() {
           </button>
         </div>
         <nav className="nav" aria-label="Main">
-          {NAV.map(({ section, links }) => (
+          {nav.map(({ section, links }) => (
             <div key={section} className="nav-section">
               <span className="nav-heading">{section}</span>
               {links.map(({ to, label, icon: Icon, end }) => (
@@ -105,11 +155,11 @@ export default function Layout() {
         <div className="sidebar-foot">
           <NavLink to="/account" className={({ isActive }) => `user-card ${isActive ? 'active' : ''}`}>
             <span className="avatar" aria-hidden="true">
-              {initials(admin.name)}
+              {admin.avatarUrl ? <img src={admin.avatarUrl} alt="" referrerPolicy="no-referrer" /> : initials(admin.name)}
             </span>
             <span className="who">
               {admin.name}
-              <small>{admin.role === 'admin' ? 'Admin' : 'Viewer (read-only)'}</small>
+              <small>{isMerchant && admin.business?.name ? admin.business.name : ROLE_LABEL[admin.role]}</small>
             </span>
           </NavLink>
           <button type="button" className="nav-link" onClick={signOut}>
@@ -130,6 +180,7 @@ export default function Layout() {
             <InstallButton />
           </div>
         </header>
+        <ApprovalBanner admin={admin} />
         <main className="content">
           <Outlet />
         </main>

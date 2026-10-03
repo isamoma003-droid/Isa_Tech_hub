@@ -32,6 +32,10 @@ const tillSchema = new Schema(
     // number: MPESA_CONSUMER_KEY for till 1, MPESA_CONSUMER_KEY_2 for till 2, and so on. So keys
     // for different tills never overlap.
     slot: { type: Number, min: 1, max: 99, unique: true, sparse: true },
+    // A merchant's own till, added by that merchant in the dashboard. Only they (and IsaPay admins)
+    // see it or can point platforms at it. Merchant tills have no number: numbers belong to the
+    // MPESA_*_N variables on the host.
+    account: { type: Schema.Types.ObjectId, ref: 'AdminUser', index: true },
     // env: created from the MPESA_* variables on the host. cli: added with scripts/till.js.
     // dashboard: added by an admin in the dashboard.
     source: { type: String, enum: ['env', 'cli', 'dashboard'] },
@@ -91,6 +95,7 @@ tillSchema.methods.toPublic = function toPublic() {
     label: this.slot ? `M-Pesa till ${this.slot}` : null,
     envSuffix: this.slot ? envSuffix(this.slot) : null,
     source: this.source || null,
+    account: this.account ? String(this.account._id || this.account) : null,
     createdAt: this.createdAt,
   };
 };

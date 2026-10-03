@@ -2,6 +2,8 @@
 
 **IsaPay is ISA Tech's M-Pesa payment gateway: one place that takes M-Pesa payments for every platform**, ours (egertickets.com, A-Read) or a partner's that uses IsaPay as its payment gateway. It runs on the ISA Tech Hub code in this repo (the code, the API key prefix `isa_sk_` and the `ISA-*` webhook headers keep their names, so existing integrations don't change).
 
+Businesses can also **sign up themselves** (email and password, or Google) and use IsaPay as their M-Pesa gateway: each sees only its own platforms, tills and payments, and takes live payments once an ISA Tech admin approves it.
+
 The Hub is the only thing that talks to Safaricom. egertickets.com, A-Read and any future or partner platform ask the Hub for payments. The Hub sends the M-Pesa PIN prompt, works out how each one ended, records the money in one place, and tells the platform. An admin dashboard shows all of it and is where new platforms are onboarded.
 
 ```
@@ -34,7 +36,12 @@ Each platform keeps its own data (bookings, books, organizer payouts). The Hub h
   - Numbered M-Pesa tills ("M-Pesa till 1", "M-Pesa till 2"…), each with its own numbered Daraja keys, and an audit log.
   - A **Developers** page for partners: the API base URL, endpoints, webhook signature checks in Node.js, PHP and Python, and a download of the Node.js client.
   - **Installable as an app** on Windows, macOS, Android and iPhone (see [Install the dashboard as an app](#install-the-dashboard-as-an-app)).
-- **Roles**: *admin* can change things; *viewer* is read-only, and phone numbers are masked for viewers.
+- **Accounts** (see [Accounts: sign-up, Google sign-in and merchants](#accounts-sign-up-google-sign-in-and-merchants)):
+  - Businesses open a **merchant** account themselves at `/register`, with email and password or **Sign in with Google**.
+  - Each merchant sees only its own platforms, tills, payments, invoices and activity.
+  - Live payments start once an admin approves the business; a sandbox till works before that.
+  - Password reset and email confirmation by email (optional SMTP), and an **Accounts** page where the team approves merchants and manages people.
+- **Roles**: *admin* can change everything; *viewer* is read-only, and phone numbers are masked for viewers; *merchant* changes only its own things.
 - **Tills** are numbered, and each till's Daraja keys carry its number, so keys for different tills never overlap:
 
   | | On Render | In the dashboard |
@@ -67,6 +74,57 @@ IsaPay charges the partner platforms that use it. Your own platforms (ownership 
 - **Partners can see and pay their bill** through the API: `GET /v1/billing` and `POST /v1/billing/invoices/<number>/pay` (see the Developers page).
 - Subscription payments are collected through a built-in platform called **IsaPay billing**, created on first use and pointed at your first active ISA till, so they appear under Payments like any other.
 
+## Accounts: sign-up, Google sign-in and merchants
+
+Anyone can open a merchant account from the sign-in page (**Create a merchant account**, at `/register`). Set `SIGNUP=false` on Render to close sign-up.
+
+| | ISA Tech team (admin, viewer) | Merchant (a business that signed up) |
+| --- | --- | --- |
+| Sees | Everything | Its own platforms and tills, their payments, invoices and webhooks, and its own activity log |
+| Platforms | Adds any, on any till; sets prices; enables and disables | Adds up to 10, on **IsaPay's till** (IsaPay collects, keeps the % fee, pays out the rest) or **its own till** (money goes straight to it; monthly subscription) |
+| Tills | All, numbered (`MPESA_*_N`) | Up to 5 of its own, unnumbered, always "partner's own" |
+| Billing | Prices, invoices, mark paid, void, payouts | Sees its plan and invoices; **Pay with M-Pesa** on its own invoices; sees payouts owed to it |
+| Accounts page | Admins approve or reject merchants, add team members or merchants (temporary password shown once), reset passwords, deactivate; viewers look | — |
+
+**Approval.** A new merchant can do everything except take live payments: until an admin approves it under **Accounts**, `POST /v1/payments` on a production till answers **403**, while a sandbox till works, so the integration can be built and tested meanwhile. The merchant sees a banner and a "Get started" checklist. Admins see "N businesses waiting for approval" on the Overview and are emailed when one signs up. Rejecting asks for a note, which the merchant sees and is emailed. Deactivating a merchant signs it out and stops its platforms at once.
+
+**Sign in with Google.** The dashboard shows Google's button when `GOOGLE_CLIENT_ID` is set. The API checks Google's signed ID token against Google's published keys (RS256, our client ID, issued by Google, unexpired, verified email). A Google account:
+- signs in to the account it is linked to;
+- or links to an existing account with the same address, but only when Google is the authority for that address (a Gmail address, or a Google Workspace domain); otherwise the person signs in with their password and links Google under **Your account**;
+- or, if no account has that email, opens a new merchant account.
+
+People who only use Google can add a password under Your account; IsaPay asks for it again before any till change.
+
+**Email.** With `SMTP_URL` set, IsaPay emails:
+- password-reset links (one-time, valid for an hour, and they sign out every other session);
+- email-confirmation links;
+- admins when a business signs up;
+- merchants when they're approved or not;
+- merchants whenever their payout details change.
+
+Without email, nothing is sent: admins use **New temporary password** and **Mark email confirmed** on the account's page.
+
+**Your account** (every user): name and phone; for merchants, business details and **payout details** (M-Pesa number or bank account, where IsaPay sends money it collected for them, shown to admins next to each payout to send); set or change the password; link or unlink Google; resend the email confirmation; **sign out everywhere else**.
+
+**Safety.**
+- Every query a merchant makes is limited to its own records server-side; another merchant's ids answer 404.
+- Merchants can't change prices, enable or disable platforms, or move a platform to another account.
+- A merchant's webhook URL must be a public `https://` address. Before each delivery the Hub checks it doesn't resolve to a private network (no requests to the server itself or the host's internal network).
+- Sign-in, sign-up and email endpoints are rate-limited.
+- Every sign-in, account change, approval and payout-detail change is in the audit log. Merchants see their own history, with IsaPay staff shown as "IsaPay team".
+
+### Setting up Google sign-in
+
+1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials), create (or pick) a project, then **Create credentials → OAuth client ID → Web application**. You may be asked to fill in the OAuth consent screen first: app name "IsaPay", your support email.
+2. Under **Authorised JavaScript origins**, add the dashboard's exact address, e.g. `https://isa-tech-hub.vercel.app`, plus `http://localhost` and `http://localhost:5173` for development. No redirect URIs are needed.
+3. Copy the client ID (`….apps.googleusercontent.com`) into `GOOGLE_CLIENT_ID` on Render and redeploy. The dashboard reads it from the API, so Vercel needs no change.
+
+The dashboard sends `Referrer-Policy: strict-origin-when-cross-origin` (in `frontend/vercel.json`, and from the API when it serves the dashboard), because Google checks the page's origin. Keep it that way: `no-referrer` breaks the Google button.
+
+### Setting up email
+
+Set `SMTP_URL` to any SMTP server. For Gmail: turn on 2-step verification, create an **app password** (Google Account → Security → App passwords), then set `SMTP_URL=smtps://you%40gmail.com:<app password>@smtp.gmail.com:465` and `MAIL_FROM=IsaPay <you@gmail.com>`. Links in emails point at the first `CLIENT_ORIGIN` (or `APP_URL`).
+
 ## Repository layout
 
 | Part | Stack |
@@ -79,11 +137,18 @@ IsaPay charges the partner platforms that use it. Your own platforms (ownership 
 backend/src/
   routes/v1.js          platform API (API key)
   routes/mpesa.js       Safaricom callbacks
-  routes/admin.js       dashboard API (sign-in, stats, payments, platforms, tills, audit)
+  routes/auth.js        dashboard sign-in, sign-up, Google, password reset, your account
+  routes/admin.js       dashboard API (stats, payments, platforms, tills, billing, accounts, audit),
+                        every query scoped to the merchant when a merchant asks
   services/daraja.js    STK push, status query, callback parsing
   services/payments.js  every payment state change, the background sweep
   services/webhooks.js  signed delivery to platforms, retries
-  models/               Till, Platform, Payment, WebhookDelivery, AdminUser, AuditLog
+  services/google.js    checks "Sign in with Google" ID tokens with Google's keys
+  services/mailer.js    email over SMTP_URL (or a log line when it's not set)
+  services/accounts.js  one-time email links, sign-up and approval emails
+  models/               Till, Platform, Payment, WebhookDelivery, AdminUser (team and merchants),
+                        AuthToken (email links), AuditLog, Invoice
+  utils/network.js      keeps merchants' webhook URLs on the public internet
   services/billing.js   plans, monthly invoices, M-Pesa collection, suspension when unpaid
   services/keepAlive.js keeps a free Render service awake
 backend/scripts/        admin.js (dashboard accounts), till.js (tills and Daraja credentials)
@@ -103,7 +168,8 @@ Render and Vercel build from `main` unless you pick another branch, so merge thi
 2. **API on Render.** Go to **New → Blueprint**, pick this repo, and Render reads `render.yaml`. It generates `JWT_SECRET` and `HUB_SECRET_KEY`; copy `HUB_SECRET_KEY` somewhere safe as well. It asks for:
    - `MONGODB_URI`: the string from step 1.
    - `CLIENT_ORIGIN`: the Vercel address from step 3 (put a placeholder for now and fix it in step 4).
-   - `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD`: your first dashboard sign-in (10+ characters).
+   - `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD`: your first dashboard sign-in (10+ characters). Use your Gmail address and you can later sign in with Google too.
+   - Optional: `GOOGLE_CLIENT_ID` for "Sign in with Google", `SMTP_URL` and `MAIL_FROM` for email (see [Setting up Google sign-in](#setting-up-google-sign-in) and [Setting up email](#setting-up-email)). Both can be added later.
    - The till: `MPESA_SHORTCODE`, `MPESA_TILL_NUMBER`, `MPESA_CONSUMER_KEY`, `MPESA_CONSUMER_SECRET`, `MPESA_PASSKEY`. These are the same values egertickets already has: its `MPESA_SHORTCODE` (the store / head office number) and its `MPESA_STORE_NUMBER` (the till customers pay). `MPESA_ENV` is preset to `production`.
 
    On the first start the log says *Created dashboard admin …* and *Added production till …*. Check that `https://<service>.onrender.com/health` answers `{"ok":true}`. Safaricom's callback address is the service's own `https://…onrender.com`, so nothing needs registering with Safaricom.
@@ -115,7 +181,7 @@ Render and Vercel build from `main` unless you pick another branch, so merge thi
 
 **Notes**
 - **Changing the till later.** The easiest way is **Tills → Edit till** in the dashboard; the change applies from the next payment. Changing an `MPESA_*` variable on Render also works: it's applied on the next start. Either way the till keeps its id, so its platforms follow along, and the change is in the audit log.
-- **More than one till** (for a partner's own till): **M-Pesa tills → Add till** in the dashboard, or the numbered `MPESA_*_2` variables on Render, or `npm run till -- add …` from your computer with the production `MONGODB_URI` and `HUB_SECRET_KEY` in `backend/.env`. **More dashboard users:** `npm run admin:create -- --email … --name … [--role viewer]`.
+- **More than one till** (for a partner's own till): **M-Pesa tills → Add till** in the dashboard, or the numbered `MPESA_*_2` variables on Render, or `npm run till -- add …` from your computer with the production `MONGODB_URI` and `HUB_SECRET_KEY` in `backend/.env`. **More dashboard users:** **Accounts → Add account** in the dashboard (or `npm run admin:create -- --email … --name … [--role viewer]`). Businesses sign up themselves at `/register`.
 - **Custom domains.** If the API gets one (e.g. `hub-api.isatech.co.ke`), set `PUBLIC_URL` to it on Render. For the dashboard, add the domain in Vercel and to `CLIENT_ORIGIN`.
 - **Render's free plan and keep-alive.** The free plan sleeps after 15 minutes without incoming requests; a sleeping server loses Safaricom's callbacks, stops the 30-second recovery sweep, and takes about a minute to answer a platform's first request. Until you move to the Starter plan, the API pings its own public address (`/health`) every 10 minutes so it never looks idle. It's on by default on Render (`KEEP_ALIVE`, `KEEP_ALIVE_EVERY_MINUTES`); the open dashboard also checks `/api/health` every minute. When you upgrade to Starter, change `plan: free` to `plan: starter` in `render.yaml` and set `KEEP_ALIVE=false`. A free instance running all month uses about 744 of the 750 free hours Render gives each workspace, so keep only this one free service always on. A redeploy or crash still restarts the server; for extra safety, an external monitor (e.g. UptimeRobot every 5 minutes on `/health`) can also wake it.
 - **One server instead of two.** You can skip Vercel: set the Render build command to `npm ci && npm ci --prefix ../frontend && npm run build --prefix ../frontend`, and set `SERVE_CLIENT=true`. The API then serves the dashboard too.
@@ -204,7 +270,7 @@ A payment looks like this:
   "metadata": {}, "createdAt": "…", "paidAt": "…" }
 ```
 
-`status` is one of `pending`, `paid`, `failed` or `disputed`. `POST /v1/payments` answers `201` (sent) or `200` with `"replayed": true` (same idempotency key). It answers `502` with the failed `payment` when M-Pesa refuses the request, `402` when the platform's IsaPay subscription is overdue past its grace period, `409` when that phone already has a prompt waiting, and `400` with `details` for invalid input.
+`status` is one of `pending`, `paid`, `failed` or `disputed`. `POST /v1/payments` answers `201` (sent) or `200` with `"replayed": true` (same idempotency key). It answers `502` with the failed `payment` when M-Pesa refuses the request, `402` when the platform's IsaPay subscription is overdue past its grace period, `403` when the merchant that runs the platform isn't approved yet (on a live till) or is deactivated, `409` when that phone already has a prompt waiting, and `400` with `details` for invalid input.
 
 **Webhooks** are POSTed as JSON to the platform's webhook URL with these headers:
 - `ISA-Event`
@@ -259,7 +325,14 @@ The API tests run the real app against a real MongoDB, with Safaricom faked and 
 - billing: percentage and subscription invoices, the free tier, M-Pesa collection and suspension when unpaid;
 - polling, signed webhooks and their retries;
 - key rotation, disabling a platform and viewer permissions;
-- CSV export, the audit log, and the `sdk/` client.
+- CSV export, the audit log, and the `sdk/` client;
+- accounts (`test/accounts.test.js`):
+  - sign-up, email confirmation and password reset by one-time link;
+  - Google sign-in against a stand-in for Google's keys: new accounts, linking only when Google is the authority, forged and foreign tokens refused;
+  - a merchant seeing only its own platforms, tills, payments, invoices and history;
+  - approval gating live payments while sandbox works;
+  - staff approving, rejecting, deactivating and managing the team;
+- merchant webhook addresses kept off private networks (unit tests).
 
 **Use a throwaway database: the tests drop it.**
 
@@ -270,4 +343,5 @@ The API tests run the real app against a real MongoDB, with Safaricom faked and 
 3. **Authenticator codes (TOTP) for dashboard sign-in**, as egertickets' superadmin console has.
 4. **Payments made from the M-Pesa menu.** Register the till's C2B confirmation URL with the Hub, add an "unmatched payments" queue, and let payers claim a payment by M-Pesa code.
 5. **Statement matching**: upload the M-Pesa org-portal statement and flag differences.
-6. **Partner reports**: logins limited to one platform, and revenue-share statements.
+6. **Partner reports**: merchants already sign in and see only their own platforms; next are monthly statements they can download, and payouts sent automatically (M-Pesa B2C) instead of by hand.
+7. **Two-factor sign-in for merchants** (with item 3), and document upload for business verification (registration certificate, KRA PIN) on the approval page.

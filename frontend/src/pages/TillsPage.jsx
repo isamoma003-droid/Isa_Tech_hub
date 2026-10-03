@@ -8,14 +8,18 @@ import { formatDateTime } from '../utils/format.js';
 const SOURCE = { env: 'Render variables', dashboard: 'Added in the dashboard', cli: 'Added from the command line' };
 
 export default function TillsPage() {
-  const { canEdit } = useAuth();
+  const { canEdit, isMerchant } = useAuth();
   const { data, isPending, error } = useTills();
 
   return (
     <>
       <PageHeader
-        title="M-Pesa tills"
-        subtitle="Where the money lands. Platforms point at a till; several can share one."
+        title={isMerchant ? 'Your M-Pesa tills' : 'M-Pesa tills'}
+        subtitle={
+          isMerchant
+            ? 'Your own Buy Goods tills and Paybills. Money paid into them goes straight to you; IsaPay bills a monthly subscription.'
+            : 'Where the money lands. Platforms point at a till; several can share one.'
+        }
         actions={
           canEdit && (
             <Link to="/tills/new" className="btn btn-primary">
@@ -24,11 +28,19 @@ export default function TillsPage() {
           )
         }
       />
-      <div className="notice notice-info">
-        Every till has a number, and its Daraja keys carry the same number (<strong>M-Pesa consumer key 1</strong>,{' '}
-        <strong>M-Pesa consumer key 2</strong>…), so keys for different tills never overlap. On Render, till 1 uses <code>MPESA_CONSUMER_KEY</code>,
-        till 2 uses <code>MPESA_CONSUMER_KEY_2</code>, and so on. Every change asks for your password again and is written to the audit log.
-      </div>
+      {isMerchant ? (
+        <div className="notice notice-info">
+          You need a Daraja app from <a href="https://developer.safaricom.co.ke" target="_blank" rel="noreferrer noopener">developer.safaricom.co.ke</a> for
+          your till: its consumer key and secret, and the Lipa na M-Pesa Online passkey. A <strong>sandbox</strong> till takes test payments straight away;
+          a live one once IsaPay approves your business. No till of your own? Choose IsaPay's till when you add a platform.
+        </div>
+      ) : (
+        <div className="notice notice-info">
+          Every till has a number, and its Daraja keys carry the same number (<strong>M-Pesa consumer key 1</strong>,{' '}
+          <strong>M-Pesa consumer key 2</strong>…), so keys for different tills never overlap. On Render, till 1 uses <code>MPESA_CONSUMER_KEY</code>,
+          till 2 uses <code>MPESA_CONSUMER_KEY_2</code>, and so on. Every change asks for your password again and is written to the audit log.
+        </div>
+      )}
       {isPending ? (
         <Spinner />
       ) : error ? (
@@ -51,10 +63,14 @@ export default function TillsPage() {
                 <small>{t.kind === 'till' ? 'Buy Goods till' : 'Paybill'}</small>
               </p>
               <dl className="kv kv-tight">
-                <div className="kv-row">
-                  <dt>Whose till</dt>
-                  <dd>{t.owner === 'partner' ? 'A partner’s (subscription billing)' : 'ISA Tech’s (percentage billing)'}</dd>
-                </div>
+                {!isMerchant && (
+                  <div className="kv-row">
+                    <dt>Whose till</dt>
+                    <dd>
+                      {t.account ? `${t.account.name}’s own (merchant account)` : t.owner === 'partner' ? 'A partner’s (subscription billing)' : 'ISA Tech’s (percentage billing)'}
+                    </dd>
+                  </div>
+                )}
                 <div className="kv-row">
                   <dt>Environment</dt>
                   <dd>{t.environment === 'production' ? 'Live' : 'Sandbox (test money)'}</dd>
@@ -93,6 +109,8 @@ export default function TillsPage() {
             </div>
           ))}
         </div>
+      ) : isMerchant ? (
+        <Empty title="No tills of your own yet">Add your Buy Goods till or Paybill, or use IsaPay's till for your platforms.</Empty>
       ) : (
         <Empty title="No tills yet">
           {canEdit ? 'Add one with “Add till”, or ' : ''}on Render set <code>MPESA_ENV</code>, <code>MPESA_SHORTCODE</code>, <code>MPESA_TILL_NUMBER</code>,{' '}

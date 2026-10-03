@@ -8,7 +8,7 @@ import { PageHeader, SecretReveal } from '../components/ui.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 
 export default function NewPlatformPage() {
-  const { canEdit } = useAuth();
+  const { canEdit, isMerchant } = useAuth();
   const [created, setCreated] = useState(null);
   const create = useAction((body) => api('/platforms', { method: 'POST', body }), [['platforms'], ['tills']]);
 
@@ -40,7 +40,14 @@ export default function NewPlatformPage() {
       <Link to="/platforms" className="back">
         <ArrowLeft size={16} aria-hidden="true" /> Platforms
       </Link>
-      <PageHeader title="Add a platform" subtitle="A site or app that will take M-Pesa payments through IsaPay — your own platforms or a partner using IsaPay as their payment gateway." />
+      <PageHeader
+        title="Add a platform"
+        subtitle={
+          isMerchant
+            ? 'Your site or app that will take M-Pesa payments through IsaPay. You get its API key and webhook secret next.'
+            : 'A site or app that will take M-Pesa payments through IsaPay — your own platforms or a partner using IsaPay as their payment gateway.'
+        }
+      />
       <div className="card">
         <PlatformForm submitLabel="Create platform" busy={create.isPending} error={create.error} onSubmit={(body) => create.mutate(body, { onSuccess: setCreated })} />
       </div>

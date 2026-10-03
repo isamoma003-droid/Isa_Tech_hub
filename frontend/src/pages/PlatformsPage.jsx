@@ -6,14 +6,18 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { formatKes, formatNumber, timeAgo } from '../utils/format.js';
 
 export default function PlatformsPage() {
-  const { canEdit } = useAuth();
+  const { canEdit, isMerchant } = useAuth();
   const { data, isPending, error } = usePlatforms();
 
   return (
     <>
       <PageHeader
-        title="Platforms"
-        subtitle="Your sites and apps, and partners using IsaPay as their M-Pesa payment gateway."
+        title={isMerchant ? 'Your platforms' : 'Platforms'}
+        subtitle={
+          isMerchant
+            ? 'Your sites and apps that take M-Pesa payments through IsaPay. Each has its own API key and webhook.'
+            : 'Your sites and apps, and partners using IsaPay as their M-Pesa payment gateway.'
+        }
         actions={
           canEdit && (
             <Link to="/platforms/new" className="btn btn-primary">
@@ -35,7 +39,8 @@ export default function PlatformsPage() {
                 <StatusBadge status={p.status} />
               </div>
               <p className="muted small mono">
-                {p.slug} · {p.ownership === 'partner' ? 'partner' : 'ours'}
+                {p.slug}
+                {!isMerchant && ` · ${p.owner ? p.owner.business || p.owner.name : p.ownership === 'partner' ? 'partner' : 'ours'}`}
               </p>
               <p className="platform-money">
                 {formatKes(p.stats.month.amount)}
@@ -67,7 +72,11 @@ export default function PlatformsPage() {
         </div>
       ) : (
         <Empty title="No platforms yet">
-          {canEdit ? 'Add egertickets, A-Read or a partner platform to start taking payments.' : 'An admin can add the first platform.'}
+          {isMerchant
+            ? 'Add your site or app to get its API key, then start M-Pesa payments from its server.'
+            : canEdit
+              ? 'Add egertickets, A-Read or a partner platform to start taking payments.'
+              : 'An admin can add the first platform.'}
         </Empty>
       )}
     </>
