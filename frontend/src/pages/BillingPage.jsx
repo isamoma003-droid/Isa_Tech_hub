@@ -15,6 +15,12 @@ const FILTERS = [
   ['payout', 'Payouts to send'],
   ['paid', 'Paid'],
 ];
+const MERCHANT_FILTERS = [
+  ['', 'All'],
+  ['open', 'To pay'],
+  ['payout', 'Payouts on their way'],
+  ['paid', 'Paid'],
+];
 
 function Tile({ icon: Icon, label, value, sub }) {
   return (
@@ -31,7 +37,7 @@ function Tile({ icon: Icon, label, value, sub }) {
   );
 }
 
-function Invoices({ canEdit }) {
+function Invoices({ canEdit, filters = FILTERS }) {
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
   const { data, isPending, error, isFetching } = useInvoices({ status, page });
@@ -40,7 +46,7 @@ function Invoices({ canEdit }) {
       <div className="card-head">
         <h2>Invoices</h2>
         <div className="segmented" role="tablist" aria-label="Show">
-          {FILTERS.map(([value, label]) => (
+          {filters.map(([value, label]) => (
             <button
               key={value || 'all'}
               type="button"
@@ -73,13 +79,99 @@ function Invoices({ canEdit }) {
   );
 }
 
+function PlatformRows({ platforms, merchant }) {
+  if (!platforms.length) return <Empty title="No platforms yet" />;
+  return (
+    <div className="table-wrap">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Platform</th>
+            <th>Plan</th>
+            <th className="num">Received</th>
+            <th className="num">Fee so far</th>
+            <th>Standing</th>
+          </tr>
+        </thead>
+        <tbody>
+          {platforms.map((row) => (
+            <tr key={row.platform.id}>
+              <td>
+                <Link to={`/platforms/${row.platform.id}`}>{row.platform.name}</Link>
+                <span className="block small muted">
+                  {merchant
+                    ? row.till
+                      ? row.till.owner === 'partner'
+                        ? `your till · ${row.till.name}`
+                        : 'IsaPay collects for you'
+                      : ''
+                    : `${row.platform.ownership === 'partner' ? 'partner' : 'yours'}${row.till ? ` · ${row.till.label || row.till.name} (${row.till.owner === 'partner' ? 'their till' : 'your till'})` : ''}`}
+                </span>
+              </td>
+              <td>
+                {PLAN_LABELS[row.pricing.plan]}
+                <span className="block small muted">{planSummary(row.pricing)}</span>
+              </td>
+              <td className="num">
+                {formatKes(row.volume.amount)}
+                <span className="block small muted">{formatNumber(row.volume.count)} payments</span>
+              </td>
+              <td className="num">
+                <strong>{formatKes(row.estimatedFee)}</strong>
+              </td>
+              <td>
+                <StatusBadge status={row.standing === 'open' ? 'ok' : row.standing} />
+                {row.suspendAt && row.standing === 'overdue' && <span className="block small muted">suspended from {formatDateTime(row.suspendAt)}</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// A merchant's view: what its platforms pay IsaPay, and what IsaPay owes it.
+function MerchantBilling({ data }) {
+  const { summary, platforms, defaults, period } = data;
+  const paid = summary.earnedThisYear.subscription.amount + summary.earnedThisYear.commission.amount;
+  return (
+    <>
+      <PageHeader title="Billing & payouts" subtitle={`What your platforms pay IsaPay, and what IsaPay pays you. ${formatPeriod(period)} so far, in Kenya time.`} />
+      <section className="tiles">
+        <Tile icon={TrendingUp} label="Fees this month so far" value={formatKes(summary.thisMonthEstimate)} sub="if the month ended now" />
+        <Tile
+          icon={summary.overdue.count ? AlertTriangle : Clock}
+          label="To pay"
+          value={formatKes(summary.outstanding.amount + summary.overdue.amount)}
+          sub={summary.overdue.count ? `${summary.overdue.count} overdue: pay to keep taking payments` : `${summary.outstanding.count} invoice(s) not yet due`}
+        />
+        <Tile icon={Banknote} label="Payouts on their way" value={formatKes(summary.payoutsPending.amount)} sub="money IsaPay collected for you" />
+        <Tile icon={CalendarCheck} label={`Fees paid in ${period.slice(0, 4)}`} value={formatKes(paid)} sub="subscriptions and percentages" />
+      </section>
+      <div className="notice notice-info">
+        <strong>How IsaPay charges.</strong> On <strong>IsaPay's till</strong>, IsaPay keeps {defaults.percent}% of what you receive and pays you the rest
+        after the month ends (set your payout details under <Link to="/account">Your account</Link>). On <strong>your own till</strong>, the money goes
+        straight to you and IsaPay bills {formatKes(defaults.monthlyFee)} a month, due {defaults.dueDays} days after the month ends. The first{' '}
+        {formatKes(defaults.freeAmount)} each month is free. Some platforms have their own price, shown below.
+      </div>
+      <section className="card">
+        <h2>Your platforms this month</h2>
+        <PlatformRows platforms={platforms} merchant />
+      </section>
+      <Invoices canEdit filters={MERCHANT_FILTERS} />
+    </>
+  );
+}
+
 export default function BillingPage() {
-  const { canEdit } = useAuth();
+  const { isAdmin, isMerchant } = useAuth();
   const { data, isPending, error } = useBilling();
   const close = useAction((body) => api('/billing/close-month', { method: 'POST', body }), [['invoices'], ['billing']]);
 
   if (isPending) return <Spinner />;
   if (error) return <ErrorMessage error={error} />;
+  if (isMerchant) return <MerchantBilling data={data} />;
   const { summary, platforms, defaults, period, lastPeriod } = data;
   const earned = summary.earnedThisYear.subscription.amount + summary.earnedThisYear.commission.amount;
 
@@ -89,7 +181,7 @@ export default function BillingPage() {
         title="Billing & revenue"
         subtitle={`What IsaPay earns from the platforms that use it. ${formatPeriod(period)} so far, in Kenya time.`}
         actions={
-          canEdit && (
+          isAdmin && (
             <button
               type="button"
               className="btn btn-ghost"
@@ -132,54 +224,10 @@ export default function BillingPage() {
 
       <section className="card">
         <h2>Platforms this month</h2>
-        {platforms.length ? (
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Platform</th>
-                  <th>Plan</th>
-                  <th className="num">Received</th>
-                  <th className="num">Fee so far</th>
-                  <th>Standing</th>
-                </tr>
-              </thead>
-              <tbody>
-                {platforms.map((row) => (
-                  <tr key={row.platform.id}>
-                    <td>
-                      <Link to={`/platforms/${row.platform.id}`}>{row.platform.name}</Link>
-                      <span className="block small muted">
-                        {row.platform.ownership === 'partner' ? 'partner' : 'yours'}
-                        {row.till ? ` · ${row.till.label || row.till.name} (${row.till.owner === 'partner' ? 'their till' : 'your till'})` : ''}
-                      </span>
-                    </td>
-                    <td>
-                      {PLAN_LABELS[row.pricing.plan]}
-                      <span className="block small muted">{planSummary(row.pricing)}</span>
-                    </td>
-                    <td className="num">
-                      {formatKes(row.volume.amount)}
-                      <span className="block small muted">{formatNumber(row.volume.count)} payments</span>
-                    </td>
-                    <td className="num">
-                      <strong>{formatKes(row.estimatedFee)}</strong>
-                    </td>
-                    <td>
-                      <StatusBadge status={row.standing === 'open' ? 'ok' : row.standing} />
-                      {row.suspendAt && row.standing === 'overdue' && <span className="block small muted">suspended from {formatDateTime(row.suspendAt)}</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <Empty title="No platforms yet" />
-        )}
+        <PlatformRows platforms={platforms} />
       </section>
 
-      <Invoices canEdit={canEdit} />
+      <Invoices canEdit={isAdmin} />
     </>
   );
 }

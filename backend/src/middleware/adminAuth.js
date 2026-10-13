@@ -26,10 +26,13 @@ export async function requireAdmin(req, _res, next) {
   next();
 }
 
-// Viewers can look at everything but change nothing.
-export function requireRole(role) {
+// Viewers can look at everything but change nothing; merchants change only their own things (the
+// routes scope every query to them), and staff-only actions name 'admin' alone.
+export function requireRole(...roles) {
   return (req, _res, next) => {
-    if (req.admin?.role !== role) throw forbidden('Your account can view the dashboard but not change anything');
-    next();
+    if (roles.includes(req.admin?.role)) return next();
+    throw forbidden(
+      req.admin?.role === 'viewer' ? 'Your account can view the dashboard but not change anything' : 'Only an IsaPay admin can do that',
+    );
   };
 }

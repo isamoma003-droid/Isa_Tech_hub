@@ -59,6 +59,22 @@ services:
         value: "true"
       - key: KEEP_ALIVE_EVERY_MINUTES
         value: "10"
+      # Merchant sign-up: businesses open their own account at <dashboard>/register. Live payments
+      # start once an admin approves them (Accounts). "false" closes sign-up.
+      - key: SIGNUP
+        value: "true"
+      # "Sign in with Google": the OAuth client ID from Google Cloud Console (Credentials → OAuth
+      # client ID → Web application, with the dashboard's address as an authorised JavaScript
+      # origin). Leave empty to hide the Google button.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      # Email for password resets, email checks and approvals, e.g. Gmail with an app password:
+      # smtps://you%40gmail.com:<app password>@smtp.gmail.com:465. Leave empty to send nothing
+      # (admins then reset passwords from Accounts).
+      - key: SMTP_URL
+        sync: false
+      - key: MAIL_FROM
+        sync: false
       # IsaPay billing defaults (each platform can have its own price in the dashboard).
       - key: BILLING_PERCENT
         value: "1.5"

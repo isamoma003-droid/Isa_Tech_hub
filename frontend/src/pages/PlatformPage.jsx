@@ -50,7 +50,7 @@ function Integration({ platform }) {
 
 export default function PlatformPage() {
   const { id } = useParams();
-  const { canEdit } = useAuth();
+  const { canEdit, isAdmin, isStaff } = useAuth();
   const { data, isPending, error } = usePlatform(id);
   const [secret, setSecret] = useState(null); // { title, value }
   const [testResult, setTestResult] = useState(null);
@@ -78,7 +78,11 @@ export default function PlatformPage() {
       </Link>
       <PageHeader
         title={platform.name}
-        subtitle={`${platform.slug} · ${platform.ownership === 'partner' ? 'partner platform' : 'our platform'} · added ${formatDateTime(platform.createdAt)}`}
+        subtitle={
+          isStaff
+            ? `${platform.slug} · ${platform.owner ? `run by ${platform.owner.business || platform.owner.name}` : platform.ownership === 'partner' ? 'partner platform' : 'our platform'} · added ${formatDateTime(platform.createdAt)}`
+            : `${platform.slug} · added ${formatDateTime(platform.createdAt)}`
+        }
         actions={
           <>
             <StatusBadge status={platform.status} />
@@ -88,6 +92,11 @@ export default function PlatformPage() {
             {platform.till && (
               <Link to={`/tills/${platform.till.id}`} className="btn btn-ghost">
                 Till
+              </Link>
+            )}
+            {isStaff && platform.owner && (
+              <Link to={`/accounts/${platform.owner.id}`} className="btn btn-ghost">
+                Merchant
               </Link>
             )}
             <Link to={`/audit?target=${platform.id}`} className="btn btn-ghost">
@@ -237,7 +246,11 @@ export default function PlatformPage() {
             <StatusBadge status={billing.standing.state === 'open' ? 'ok' : billing.standing.state} />
           </div>
           {billing.standing.state === 'suspended' && (
-            <div className="notice notice-error">This platform can't start new payments until its overdue invoice is paid, or you extend its grace below.</div>
+            <div className="notice notice-error">
+              {isStaff
+                ? "This platform can't start new payments until its overdue invoice is paid, or you extend its grace below."
+                : "This platform can't start new payments until its overdue invoice is paid. Pay it below with M-Pesa."}
+            </div>
           )}
           <dl className="kv kv-tight">
             <div className="kv-row">
@@ -254,15 +267,21 @@ export default function PlatformPage() {
               <InvoiceTable invoices={billing.invoices} showPlatform={false} canEdit={canEdit} />
             </>
           )}
-          <h3>Price</h3>
-          <BillingSettings key={platform.id} platform={platform} canEdit={canEdit} />
+          {isStaff ? (
+            <>
+              <h3>Price</h3>
+              <BillingSettings key={platform.id} platform={platform} canEdit={isAdmin} />
+            </>
+          ) : (
+            <p className="hint">Prices are set by IsaPay. Questions about your plan? Contact the IsaPay team.</p>
+          )}
         </section>
       )}
 
       <section className="card">
         <div className="card-head">
           <h2>Settings</h2>
-          {canEdit && (
+          {isAdmin && (
             <button
               type="button"
               className={`btn ${platform.status === 'active' ? 'btn-danger' : 'btn-ghost'}`}
@@ -288,7 +307,7 @@ export default function PlatformPage() {
           error={save.error}
           disabled={!canEdit}
           onSubmit={(body) => {
-            if (body.till !== platform.till?.id && !window.confirm('Move this platform to a different till? New payments will be paid into that till.')) return;
+            if (body.till && !window.confirm('Move this platform to a different till? New payments will be paid into that till.')) return;
             save.mutate(body);
           }}
         />

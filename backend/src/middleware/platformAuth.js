@@ -12,6 +12,7 @@ export async function requirePlatform(req, _res, next) {
   const platform = await Platform.findByApiKey(key);
   if (!platform) throw unauthorized('Invalid API key');
   if (platform.status !== 'active') throw forbidden('This platform is disabled. Contact the ISA Tech Hub admin.');
+  if (platform.owner && !platform.owner.active) throw forbidden('The IsaPay account that runs this platform is deactivated. Contact IsaPay.');
   req.platform = platform;
   next();
 }

@@ -27,6 +27,8 @@ function list(name) {
 }
 
 const isTest = process.env.NODE_ENV === 'test';
+const publicUrl = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${number('PORT', 5100)}`).replace(/\/$/, '');
+const clientOrigins = list('CLIENT_ORIGIN').length ? list('CLIENT_ORIGIN') : ['http://localhost:5173'];
 
 export const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -41,9 +43,23 @@ export const env = {
   // Public HTTPS address of this API. Safaricom posts payment results to
   // <PUBLIC_URL>/mpesa/callback/<till id>/<till secret>. On Render it defaults to the service's
   // own address (RENDER_EXTERNAL_URL); set PUBLIC_URL when you add a custom domain.
-  publicUrl: (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${number('PORT', 5100)}`).replace(/\/$/, ''),
+  publicUrl,
   // Dashboard origins allowed to call /api/admin (not needed when SERVE_CLIENT=true).
-  clientOrigins: list('CLIENT_ORIGIN').length ? list('CLIENT_ORIGIN') : ['http://localhost:5173'],
+  clientOrigins,
+  // The dashboard's address, for links in emails (password reset, email check). Defaults to the
+  // first CLIENT_ORIGIN, or this server when it serves the dashboard itself.
+  appUrl: (process.env.APP_URL || (process.env.SERVE_CLIENT === 'true' ? publicUrl : clientOrigins[0])).replace(/\/$/, ''),
+  // Anyone can open a merchant account from the sign-in page (SIGNUP=false closes it). New
+  // merchants can set everything up and test on a sandbox till; live payments start once an
+  // IsaPay admin approves the business.
+  signup: process.env.SIGNUP !== 'false',
+  // "Sign in with Google": the OAuth client ID(s) from Google Cloud Console, comma-separated.
+  googleClientIds: list('GOOGLE_CLIENT_ID'),
+  // Outgoing email (password resets, email checks, approvals), e.g.
+  // smtps://you%40gmail.com:app-password@smtp.gmail.com:465. Without it, nothing is emailed:
+  // admins reset passwords from the Accounts page instead.
+  smtpUrl: process.env.SMTP_URL || '',
+  mailFrom: process.env.MAIL_FROM || '',
   minAmount: number('MIN_AMOUNT', 1),
   maxAmount: number('MAX_AMOUNT', 150_000),
   // Background work: asking Safaricom about payments whose callback never came, and

@@ -10,7 +10,7 @@ import { PAYMENT_STATUSES, Payment } from '../models/Payment.js';
 import { Invoice } from '../models/Invoice.js';
 import { assertCanTakePayments, billingStanding, collectInvoice, estimate } from '../services/billing.js';
 import { checkPayment, createPayment } from '../services/payments.js';
-import { badRequest, notFound } from '../utils/httpError.js';
+import { HttpError, badRequest, notFound } from '../utils/httpError.js';
 import { normalizePhone } from '../utils/phone.js';
 
 const router = Router();
@@ -80,6 +80,19 @@ const createSchema = z.object({
 
 const view = (req, payment) => payment.toPlatform(req.platform.slug);
 
+// A merchant's platforms take live payments once IsaPay has approved the business. A sandbox till
+// works from the first day, so the integration can be built and tested while it waits.
+function assertApproved(platform) {
+  const owner = platform.owner;
+  if (owner?.role !== 'merchant' || owner.approval?.status === 'approved' || platform.till?.environment === 'sandbox') return;
+  throw new HttpError(
+    403,
+    owner.approval?.status === 'rejected'
+      ? 'IsaPay has not approved this business for live payments. See the IsaPay dashboard for details.'
+      : 'IsaPay is still reviewing this business. Live payments start once it is approved; a sandbox till works meanwhile.',
+  );
+}
+
 // Starts a payment: Safaricom sends the PIN prompt to `phone`. Pass an Idempotency-Key header
 // (e.g. your order id plus attempt number) so a retried request can't prompt the payer twice.
 router.post('/payments', validate(createSchema), async (req, res) => {
@@ -87,6 +100,7 @@ router.post('/payments', validate(createSchema), async (req, res) => {
   const phone = normalizePhone(body.phone);
   if (!phone) throw badRequest('phone must be a Kenyan mobile number, e.g. 0712345678 or 254712345678');
   const idempotencyKey = req.get('idempotency-key')?.trim().slice(0, 100) || body.idempotencyKey;
+  assertApproved(req.platform);
   await assertCanTakePayments(req.platform);
 
   const { payment, replayed, error } = await createPayment(req.platform, { ...body, phone, idempotencyKey });

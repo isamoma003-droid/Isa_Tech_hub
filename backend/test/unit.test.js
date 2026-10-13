@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import { describe, test } from 'node:test';
+import jwt from 'jsonwebtoken';
 import { Till, envSuffix } from '../src/models/Till.js';
 import { feeFor, resolvePlan } from '../src/services/billing.js';
+import { setGoogleCertsFetcher, verifyGoogleIdToken } from '../src/services/google.js';
 import { startKeepAlive } from '../src/services/keepAlive.js';
 import { parseCallback, setDarajaTransport, stkQuery } from '../src/services/daraja.js';
 import { decryptSecret, encryptSecret, signWebhook, verifyWebhookSignature } from '../src/utils/crypto.js';
+import { assertPublicDestination, isPrivateAddress, isPublicHttpsUrl } from '../src/utils/network.js';
 import { maskPhone, normalizePhone } from '../src/utils/phone.js';
 import { darajaTimestamp, kenyaDay, monthRange, previousMonth, startOfKenyaDay } from '../src/utils/time.js';
 
@@ -196,5 +200,88 @@ describe('billing', () => {
     assert.equal(previousMonth('2026-01'), '2025-12');
     assert.equal(monthRange('2026-10').start.toISOString(), '2026-09-30T21:00:00.000Z');
     assert.equal(monthRange('2026-12').end.toISOString(), '2026-12-31T21:00:00.000Z');
+  });
+});
+
+describe('merchant webhook addresses', () => {
+  test('must be public https addresses', () => {
+    for (const url of ['https://shop.example.com/hooks/isapay', 'https://8.8.8.8/x', 'https://[2606:4700::1111]/x']) {
+      assert.equal(isPublicHttpsUrl(url), true, url);
+    }
+    for (const url of [
+      'http://shop.example.com/hooks',
+      'https://localhost/x',
+      'https://api.localhost/x',
+      'https://printer.local/x',
+      'https://metadata.google.internal/x',
+      'https://intranet/x',
+      'https://127.0.0.1/x',
+      'https://10.1.2.3/x',
+      'https://172.20.0.5/x',
+      'https://192.168.1.1/x',
+      'https://169.254.169.254/latest/meta-data',
+      'https://100.64.0.1/x',
+      'https://[::1]/x',
+      'https://[fd00::1]/x',
+      'https://[::ffff:10.0.0.1]/x',
+      'https://user:pass@shop.example.com/x',
+      'not a url',
+    ]) {
+      assert.equal(isPublicHttpsUrl(url), false, url);
+    }
+    assert.equal(isPrivateAddress('41.90.1.1'), false);
+    assert.equal(isPrivateAddress('0.0.0.0'), true);
+  });
+
+  test('a public name that resolves to a private address is refused before delivery', async () => {
+    const resolvesTo = (address) => async () => [{ address, family: 4 }];
+    await assert.doesNotReject(assertPublicDestination('https://shop.example.com/x', resolvesTo('41.90.1.1')));
+    await assert.rejects(assertPublicDestination('https://sneaky.example.com/x', resolvesTo('10.0.0.7')), /private network/);
+    await assert.rejects(assertPublicDestination('https://127.0.0.1/x'), /private network/);
+  });
+});
+
+describe('Google sign-in tokens', () => {
+  const clientIds = ['web-client.apps.googleusercontent.com'];
+  const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const other = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const jwk = { ...publicKey.export({ format: 'jwk' }), kid: 'key-1', alg: 'RS256', use: 'sig' };
+  const sign = (claims = {}, { key = privateKey, kid = 'key-1', ...options } = {}) =>
+    jwt.sign(
+      { email: 'Wanjiku@gmail.com', email_verified: true, name: 'Wanjiku', picture: 'https://lh3.googleusercontent.com/a/x', ...claims },
+      key,
+      { algorithm: 'RS256', keyid: kid, audience: clientIds[0], issuer: 'https://accounts.google.com', subject: '1234567890', expiresIn: '1h', ...options },
+    );
+
+  test('accepts a token Google signed for our client', async (t) => {
+    let fetches = 0;
+    setGoogleCertsFetcher(async () => {
+      fetches += 1;
+      return { json: { keys: [jwk] }, maxAge: 3600 };
+    });
+    t.after(() => setGoogleCertsFetcher(null));
+    const who = await verifyGoogleIdToken(sign(), { clientIds });
+    assert.deepEqual(who, { googleId: '1234567890', email: 'wanjiku@gmail.com', name: 'Wanjiku', picture: 'https://lh3.googleusercontent.com/a/x', authoritative: true });
+    await verifyGoogleIdToken(sign(), { clientIds });
+    assert.equal(fetches, 1, "Google's keys are cached");
+
+    // Google is the authority for Gmail and for Workspace domains (hd), not for other addresses.
+    assert.equal((await verifyGoogleIdToken(sign({ email: 'a@shop.co.ke' }), { clientIds })).authoritative, false);
+    assert.equal((await verifyGoogleIdToken(sign({ email: 'a@shop.co.ke', hd: 'shop.co.ke' }), { clientIds })).authoritative, true);
+  });
+
+  test('refuses forged, foreign, expired and unverified tokens', async (t) => {
+    setGoogleCertsFetcher(async () => ({ json: { keys: [jwk] }, maxAge: 3600 }));
+    t.after(() => setGoogleCertsFetcher(null));
+    const refused = (token) => assert.rejects(verifyGoogleIdToken(token, { clientIds }), (err) => err.status === 401);
+    await refused(sign({}, { key: other.privateKey }));
+    await refused(sign({}, { kid: 'unknown-key' }));
+    await refused(sign({}, { audience: 'someone-elses-client' }));
+    await refused(sign({}, { issuer: 'https://evil.example' }));
+    await refused(sign({}, { expiresIn: -120 }));
+    await refused(sign({ email_verified: false }));
+    await refused(jwt.sign({ sub: '1', email: 'a@gmail.com', email_verified: true }, 'shared-secret', { algorithm: 'HS256', keyid: 'key-1', audience: clientIds[0], issuer: 'accounts.google.com' }));
+    await refused('not-a-token');
+    await assert.rejects(verifyGoogleIdToken(sign(), { clientIds: [] }), (err) => err.status === 503);
   });
 });

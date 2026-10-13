@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 import { Banknote, CheckCheck, Smartphone, XCircle } from 'lucide-react';
 import { api } from '../api/client.js';
 import { useAction } from '../api/queries.js';
-import { formatDateTime, formatKes, formatNumber, formatPeriod } from '../utils/format.js';
+import { useAuth } from '../context/AuthContext.jsx';
+import { formatDateTime, formatKes, formatNumber, formatPayout, formatPeriod } from '../utils/format.js';
 import { ErrorMessage, Field, StatusBadge } from './ui.jsx';
 
 export const PLAN_LABELS = {
@@ -24,6 +25,7 @@ export function planSummary(pricing) {
 const REFRESH = [['invoices'], ['billing'], ['platform'], ['stats']];
 
 function InvoiceActions({ invoice }) {
+  const { isAdmin, isMerchant } = useAuth();
   const [message, setMessage] = useState(null);
   const collect = useAction((body) => api(`/invoices/${invoice.id}/collect`, { method: 'POST', body }), REFRESH);
   const markPaid = useAction((body) => api(`/invoices/${invoice.id}/mark-paid`, { method: 'POST', body }), REFRESH);
@@ -33,10 +35,16 @@ function InvoiceActions({ invoice }) {
   const error = collect.error || markPaid.error || voidIt.error || payout.error;
 
   const onCollect = () => {
-    const phone = window.prompt(`Send an M-Pesa prompt for ${formatKes(invoice.fee)} (${invoice.number}). Phone number, or leave empty for the platform's billing phone:`, '');
+    const phone = window.prompt(
+      isMerchant
+        ? `Pay ${formatKes(invoice.fee)} for ${invoice.number}. The M-Pesa number to send the prompt to:`
+        : `Send an M-Pesa prompt for ${formatKes(invoice.fee)} (${invoice.number}). Phone number, or leave empty for the platform's billing phone:`,
+      '',
+    );
     if (phone === null) return;
     collect.mutate(phone.trim() ? { phone: phone.trim() } : {}, {
-      onSuccess: (r) => setMessage(`Prompt sent. The invoice is marked paid as soon as payment ${r.payment.id.slice(-6)} goes through.`),
+      onSuccess: (r) =>
+        setMessage(isMerchant ? 'Check your phone and enter your M-Pesa PIN. The invoice is marked paid once it goes through.' : `Prompt sent. The invoice is marked paid as soon as payment ${r.payment.id.slice(-6)} goes through.`),
     });
   };
   const onMarkPaid = () => {
@@ -48,17 +56,20 @@ function InvoiceActions({ invoice }) {
     if (note !== null) voidIt.mutate({ note: note.trim() || undefined });
   };
   const onPayout = () => {
-    const reference = window.prompt(`You sent ${formatKes(invoice.payout)} to the partner for ${formatPeriod(invoice.period)}. M-Pesa or bank reference:`, '');
+    const to = invoice.payTo ? ` (${formatPayout(invoice.payTo)})` : '';
+    const reference = window.prompt(`You sent ${formatKes(invoice.payout)} to the partner${to} for ${formatPeriod(invoice.period)}. M-Pesa or bank reference:`, '');
     if (reference?.trim()) payout.mutate({ reference: reference.trim() });
   };
 
   return (
     <div className="row-actions">
       {invoice.kind === 'subscription' && invoice.status === 'open' && (
+        <button type="button" className="btn btn-primary btn-small" disabled={busy} onClick={onCollect}>
+          <Smartphone size={14} aria-hidden="true" /> {isMerchant ? 'Pay with M-Pesa' : 'Request M-Pesa'}
+        </button>
+      )}
+      {isAdmin && invoice.kind === 'subscription' && invoice.status === 'open' && (
         <>
-          <button type="button" className="btn btn-primary btn-small" disabled={busy} onClick={onCollect}>
-            <Smartphone size={14} aria-hidden="true" /> Request M-Pesa
-          </button>
           <button type="button" className="btn btn-ghost btn-small" disabled={busy} onClick={onMarkPaid}>
             <CheckCheck size={14} aria-hidden="true" /> Mark paid
           </button>
@@ -67,7 +78,7 @@ function InvoiceActions({ invoice }) {
           </button>
         </>
       )}
-      {invoice.payoutStatus === 'pending' && (
+      {isAdmin && invoice.payoutStatus === 'pending' && (
         <button type="button" className="btn btn-ghost btn-small" disabled={busy} onClick={onPayout}>
           <Banknote size={14} aria-hidden="true" /> Payout sent
         </button>
@@ -79,6 +90,7 @@ function InvoiceActions({ invoice }) {
 }
 
 export function InvoiceTable({ invoices, showPlatform = true, canEdit }) {
+  const { isMerchant } = useAuth();
   return (
     <div className="table-wrap">
       <table className="table">
@@ -90,7 +102,7 @@ export function InvoiceTable({ invoices, showPlatform = true, canEdit }) {
             <th className="num">Received</th>
             <th className="num">IsaPay fee</th>
             <th>Status</th>
-            <th>Partner payout</th>
+            <th>{isMerchant ? 'Paid out to you' : 'Partner payout'}</th>
             {canEdit && <th />}
           </tr>
         </thead>
@@ -125,8 +137,10 @@ export function InvoiceTable({ invoices, showPlatform = true, canEdit }) {
                   <>
                     {formatKes(inv.payout)}
                     <span className="block small muted">
-                      {inv.payoutStatus === 'sent' ? `sent · ${inv.payoutReference}` : inv.payoutStatus === 'pending' ? 'to send' : '—'}
+                      {inv.payoutStatus === 'sent' ? `sent · ${inv.payoutReference}` : inv.payoutStatus === 'pending' ? (isMerchant ? 'on its way' : 'to send') : '—'}
                     </span>
+                    {inv.payTo && <span className="block small">to {formatPayout(inv.payTo)}</span>}
+                    {inv.payTo === null && <span className="block small muted">no payout details yet</span>}
                   </>
                 ) : (
                   <span className="muted">—</span>

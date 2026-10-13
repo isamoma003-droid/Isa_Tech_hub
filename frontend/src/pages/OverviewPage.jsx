@@ -1,8 +1,10 @@
-import { Link } from 'react-router-dom';
-import { AlertTriangle, CalendarDays, CalendarRange, Clock, Scale, Target, Wallet, Webhook } from 'lucide-react';
-import { useStats } from '../api/queries.js';
+import { Link, useLocation } from 'react-router-dom';
+import { AlertTriangle, CalendarDays, CalendarRange, CheckCircle2, Circle, Clock, Scale, Target, UserCheck, Wallet, Webhook } from 'lucide-react';
+import { usePlatforms, useStats, useTills } from '../api/queries.js';
+import { BRAND } from '../brand.js';
 import { DailyChart, PlatformBars } from '../components/Charts.jsx';
 import { Empty, ErrorMessage, PageHeader, Spinner, StatusBadge } from '../components/ui.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
 import { formatDateTime, formatKes, formatNumber, percent } from '../utils/format.js';
 
 function Tile({ label, total, icon: Icon }) {
@@ -22,19 +24,77 @@ function Tile({ label, total, icon: Icon }) {
   );
 }
 
+// A new merchant's first steps, until they're all done.
+function GetStarted({ admin }) {
+  const { data: platformData } = usePlatforms();
+  const { data: tillData } = useTills();
+  const location = useLocation();
+  if (!platformData || !tillData) return null;
+  const platforms = platformData.platforms;
+  const usesIsapayTill = platforms.some((p) => p.till && !p.till.account);
+  const steps = [
+    { done: Boolean(admin.business?.name && admin.business?.description), to: '/account', text: 'Tell us about your business and what you sell' },
+    { done: admin.emailVerified, to: '/account', text: 'Confirm your email address' },
+    { done: platforms.length > 0, to: '/platforms/new', text: 'Add your site or app as a platform, and copy its API key' },
+    { done: platforms.some((p) => p.webhookUrl), to: platforms[0] ? `/platforms/${platforms[0].id}` : '/platforms/new', text: 'Set a webhook URL and send a test webhook' },
+    {
+      done: tillData.tills.length > 0 || (usesIsapayTill && Boolean(admin.payout?.method)),
+      to: usesIsapayTill ? '/account' : '/tills/new',
+      text: usesIsapayTill ? `Tell ${BRAND.name} where to send your money (payout details)` : 'Add your own M-Pesa till, or use IsaPay’s till for a platform',
+    },
+    { done: admin.approval?.status === 'approved', to: '/account', text: `Get approved by ${BRAND.name} for live payments` },
+  ];
+  const left = steps.filter((step) => !step.done).length;
+  if (!left) return null;
+
+  return (
+    <section className="card">
+      <div className="card-head">
+        <div>
+          <h2>{location.state?.welcome ? `Welcome to ${BRAND.name}` : 'Get started'}</h2>
+          <p className="card-sub">
+            {steps.length - left} of {steps.length} done. A sandbox till takes test payments before approval.
+          </p>
+        </div>
+        <Link to="/developers" className="btn btn-ghost btn-small">
+          Integration guide
+        </Link>
+      </div>
+      <ol className="checklist">
+        {steps.map((step) => (
+          <li key={step.text} className={step.done ? 'done' : ''}>
+            {step.done ? <CheckCircle2 size={18} aria-hidden="true" /> : <Circle size={18} aria-hidden="true" />}
+            {step.done ? <span>{step.text}</span> : <Link to={step.to}>{step.text}</Link>}
+            <span className="sr-only">{step.done ? ' (done)' : ' (to do)'}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 export default function OverviewPage() {
+  const { admin, isMerchant } = useAuth();
   const { data, isPending, error } = useStats();
   if (isPending) return <Spinner />;
   if (error) return <ErrorMessage error={error} />;
 
   const { totals, days, byPlatform, successRate, attention, recent } = data;
   const alerts = [
+    attention.waitingMerchants > 0 && {
+      to: '/accounts?show=pending',
+      icon: UserCheck,
+      text: `${attention.waitingMerchants} business${attention.waitingMerchants === 1 ? '' : 'es'} waiting for approval`,
+      tone: 'info',
+    },
     attention.pending > 0 && { to: '/payments?status=pending', icon: Clock, text: `${attention.pending} waiting for the payer`, tone: 'info' },
     attention.disputed > 0 && { to: '/payments?status=disputed', icon: Scale, text: `${attention.disputed} disputed (amount differs)`, tone: 'warn' },
     attention.overdueInvoices > 0 && {
       to: '/billing',
       icon: AlertTriangle,
-      text: `${attention.overdueInvoices} IsaPay invoice${attention.overdueInvoices === 1 ? '' : 's'} overdue`,
+      text: isMerchant
+        ? `You have ${attention.overdueInvoices} overdue IsaPay invoice${attention.overdueInvoices === 1 ? '' : 's'}`
+        : `${attention.overdueInvoices} IsaPay invoice${attention.overdueInvoices === 1 ? '' : 's'} overdue`,
       tone: 'warn',
     },
     attention.failedWebhooks > 0 && { to: '/platforms', icon: Webhook, text: `${attention.failedWebhooks} webhook${attention.failedWebhooks === 1 ? '' : 's'} gave up`, tone: 'warn' },
@@ -42,7 +102,11 @@ export default function OverviewPage() {
 
   return (
     <>
-      <PageHeader title="Overview" subtitle="Money received through IsaPay, in Kenya time. Updates every 30 seconds." />
+      <PageHeader
+        title={isMerchant ? `Hello, ${admin.name.split(' ')[0]}` : 'Overview'}
+        subtitle={`${isMerchant ? 'Money your platforms received' : 'Money received'} through ${BRAND.name}, in Kenya time. Updates every 30 seconds.`}
+      />
+      {isMerchant && <GetStarted admin={admin} />}
 
       <section className="tiles">
         <Tile label="Today" total={totals.today} icon={Wallet} />
@@ -125,7 +189,9 @@ export default function OverviewPage() {
             </table>
           </div>
         ) : (
-          <Empty title="No payments yet">Add a platform, then start a payment from it.</Empty>
+          <Empty title="No payments yet">
+            {isMerchant ? 'Add a platform, then start a payment from its server with your API key.' : 'Add a platform, then start a payment from it.'}
+          </Empty>
         )}
         <p className="hint">All time: {formatKes(totals.allTime.amount)} from {formatNumber(totals.allTime.count)} payments.</p>
       </section>

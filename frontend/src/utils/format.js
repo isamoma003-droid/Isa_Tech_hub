@@ -49,3 +49,17 @@ export const percent = (ratio) => (ratio === null || ratio === undefined ? '—'
 // "2026-09" → "Sep 2026".
 export const formatPeriod = (period) =>
   period ? new Date(`${period}-15T12:00:00+03:00`).toLocaleDateString('en-KE', { timeZone: TIME_ZONE, month: 'short', year: 'numeric' }) : '—';
+
+// 254712345678 → "0712 345 678" (numbers are stored in the 254… form M-Pesa uses).
+export const formatPhone = (phone) => {
+  const digits = String(phone || '');
+  return /^254\d{9}$/.test(digits) ? `0${digits.slice(3, 6)} ${digits.slice(6, 9)} ${digits.slice(9)}` : digits;
+};
+
+// A merchant's payout destination, in one line.
+export const formatPayout = (payout) =>
+  !payout?.method
+    ? ''
+    : payout.method === 'mpesa'
+      ? `M-Pesa ${formatPhone(payout.phone)}`
+      : `${payout.bankName}: ${payout.accountName}, ${payout.accountNumber}`;
