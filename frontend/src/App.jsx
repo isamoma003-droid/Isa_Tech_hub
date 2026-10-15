@@ -19,6 +19,9 @@ import PlatformsPage from './pages/PlatformsPage.jsx';
 import RegisterPage from './pages/RegisterPage.jsx';
 import TillPage from './pages/TillPage.jsx';
 import TillsPage from './pages/TillsPage.jsx';
+import PrivacyPage from './pages/PrivacyPage.jsx';
+import TermsPage from './pages/TermsPage.jsx';
+import FAQPage from './pages/FAQPage.jsx';
 
 function RequireSignIn({ children }) {
   const { admin, checking } = useAuth();
@@ -42,6 +45,12 @@ export default function App() {
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/verify-email" element={<VerifyEmailPage />} />
+
+      {/* Public informational pages */}
+      <Route path="/privacy" element={<PrivacyPage />} />
+      <Route path="/terms" element={<TermsPage />} />
+      <Route path="/faq" element={<FAQPage />} />
+
       <Route
         element={
           <RequireSignIn>
