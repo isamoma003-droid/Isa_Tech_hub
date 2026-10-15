@@ -7,6 +7,8 @@ import { AccountDetailPage, AccountsPage } from './pages/AccountsPage.jsx';
 import AuditPage from './pages/AuditPage.jsx';
 import BillingPage from './pages/BillingPage.jsx';
 import DevelopersPage from './pages/DevelopersPage.jsx';
+import FAQPage from './pages/FAQPage.jsx';
+import HomePage from './pages/HomePage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import NewPlatformPage from './pages/NewPlatformPage.jsx';
 import NewTillPage from './pages/NewTillPage.jsx';
@@ -16,12 +18,11 @@ import PaymentPage from './pages/PaymentPage.jsx';
 import PaymentsPage from './pages/PaymentsPage.jsx';
 import PlatformPage from './pages/PlatformPage.jsx';
 import PlatformsPage from './pages/PlatformsPage.jsx';
+import PrivacyPage from './pages/PrivacyPage.jsx';
 import RegisterPage from './pages/RegisterPage.jsx';
+import TermsPage from './pages/TermsPage.jsx';
 import TillPage from './pages/TillPage.jsx';
 import TillsPage from './pages/TillsPage.jsx';
-import PrivacyPage from './pages/PrivacyPage.jsx';
-import TermsPage from './pages/TermsPage.jsx';
-import FAQPage from './pages/FAQPage.jsx';
 
 function RequireSignIn({ children }) {
   const { admin, checking } = useAuth();
@@ -40,6 +41,8 @@ function StaffOnly({ children }) {
 export default function App() {
   return (
     <Routes>
+      <Route path="/" element={<HomePage />} />
+      <Route path="/home" element={<HomePage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
