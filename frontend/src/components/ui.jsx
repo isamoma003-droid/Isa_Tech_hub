@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { AlertTriangle, Check, CircleCheck, CircleX, Clock, Copy, LoaderCircle, Scale } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, X, Clock, Copy, Loader2, Scale } from 'lucide-react';
 
 export function Spinner({ label = 'Loading…' }) {
   return (
     <div className="spinner" role="status">
-      <LoaderCircle className="spin" size={20} aria-hidden="true" />
+      <Loader2 className="spin" size={20} aria-hidden="true" />
       <span>{label}</span>
     </div>
   );
@@ -34,24 +34,24 @@ export function Empty({ title, children }) {
 
 // Status never relies on color alone: every badge has an icon and a word.
 const STATUS = {
-  paid: { icon: CircleCheck, label: 'Paid' },
+  paid: { icon: CheckCircle2, label: 'Paid' },
   pending: { icon: Clock, label: 'Pending' },
-  failed: { icon: CircleX, label: 'Failed' },
+  failed: { icon: X, label: 'Failed' },
   disputed: { icon: Scale, label: 'Disputed' },
-  delivered: { icon: CircleCheck, label: 'Delivered', tone: 'paid' },
-  active: { icon: CircleCheck, label: 'Active', tone: 'paid' },
-  disabled: { icon: CircleX, label: 'Disabled', tone: 'failed' },
+  delivered: { icon: CheckCircle2, label: 'Delivered', tone: 'paid' },
+  active: { icon: CheckCircle2, label: 'Active', tone: 'paid' },
+  disabled: { icon: X, label: 'Disabled', tone: 'failed' },
   open: { icon: Clock, label: 'Unpaid', tone: 'pending' },
   overdue: { icon: AlertTriangle, label: 'Overdue', tone: 'disputed' },
-  suspended: { icon: CircleX, label: 'Suspended', tone: 'failed' },
-  waived: { icon: CircleCheck, label: 'Waived (free tier)', tone: 'paid' },
-  void: { icon: CircleX, label: 'Void', tone: 'void' },
-  ok: { icon: CircleCheck, label: 'In good standing', tone: 'paid' },
+  suspended: { icon: X, label: 'Suspended', tone: 'failed' },
+  waived: { icon: CheckCircle2, label: 'Waived (free tier)', tone: 'paid' },
+  void: { icon: X, label: 'Void', tone: 'void' },
+  ok: { icon: CheckCircle2, label: 'In good standing', tone: 'paid' },
   // Merchant accounts.
   'approval-pending': { icon: Clock, label: 'Waiting for approval', tone: 'pending' },
-  'approval-approved': { icon: CircleCheck, label: 'Approved for live payments', tone: 'paid' },
-  'approval-rejected': { icon: CircleX, label: 'Not approved', tone: 'failed' },
-  inactive: { icon: CircleX, label: 'Deactivated', tone: 'failed' },
+  'approval-approved': { icon: CheckCircle2, label: 'Approved for live payments', tone: 'paid' },
+  'approval-rejected': { icon: X, label: 'Not approved', tone: 'failed' },
+  inactive: { icon: X, label: 'Deactivated', tone: 'failed' },
 };
 
 export function StatusBadge({ status }) {
