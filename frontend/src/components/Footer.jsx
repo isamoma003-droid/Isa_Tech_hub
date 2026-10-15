@@ -14,7 +14,7 @@ export default function Footer() {
           <div className="footer-column">
             <h4>Product</h4>
             <ul>
-              <li><a href="/">About IsaPay</a></li>
+              <li><a href="/home">About IsaPay</a></li>
               <li><a href="/developers">Developers & API</a></li>
               <li><a href="/payments">Payments</a></li>
             </ul>
@@ -30,11 +30,12 @@ export default function Footer() {
           </div>
 
           <div className="footer-column">
-            <h4>Company</h4>
+            <h4>Learn more</h4>
             <ul>
-              <li><a href="https://github.com/isamoma003-droid/Isa_Tech_hub" target="_blank" rel="noopener noreferrer">Source on GitHub</a></li>
-              <li><a href="/privacy">Privacy</a></li>
-              <li><a href="/terms">Terms</a></li>
+              <li><a href="/developers#integration">Integration guide</a></li>
+              <li><a href="/developers#sdk">SDK downloads</a></li>
+              <li><a href="https://github.com/isamoma003-droid/Isa_Tech_hub/blob/main/docs/INTEGRATION.md" target="_blank" rel="noopener noreferrer">Full docs (GitHub)</a></li>
+              <li><a href="/developers#postman">Postman collection</a></li>
             </ul>
           </div>
         </nav>
