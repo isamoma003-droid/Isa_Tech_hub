@@ -50,6 +50,7 @@ export default function App() {
       <Route path="/verify-email" element={<VerifyEmailPage />} />
 
       {/* Public informational pages */}
+      <Route path="/developers" element={<DevelopersPage />} />
       <Route path="/privacy" element={<PrivacyPage />} />
       <Route path="/terms" element={<TermsPage />} />
       <Route path="/faq" element={<FAQPage />} />
@@ -70,7 +71,6 @@ export default function App() {
         <Route path="tills" element={<TillsPage />} />
         <Route path="tills/new" element={<NewTillPage />} />
         <Route path="tills/:id" element={<TillPage />} />
-        <Route path="developers" element={<DevelopersPage />} />
         <Route path="billing" element={<BillingPage />} />
         <Route path="audit" element={<AuditPage />} />
         <Route path="account" element={<AccountPage />} />
