@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
 import { ArrowRight, BookOpen, CheckCircle2, ExternalLink, ShieldCheck, Zap } from 'lucide-react';
 import { Brand } from '../components/Logo.jsx';
-import PublicNav from '../components/PublicNav.jsx';
 
 const features = [
   {
@@ -30,13 +29,11 @@ const stats = [
 
 export default function HomePage() {
   return (
-    <div>
-      <PublicNav />
-      <div className="home-page container">
-        <section className="home-hero card">
+    <div className="home-page container">
+      <section className="home-hero card">
           <div className="hero-copy">
-            <div className="eyebrow">IsaPay by ISA Tech</div>
-            <Brand subtitle="M‑Pesa gateway for platform teams" />
+            <div className="eyebrow">Payments infrastructure for platform teams</div>
+            <Brand subtitle="M‑Pesa gateway by ISA Tech" />
             <h1>Simplify M‑Pesa payments across all your platforms.</h1>
             <p>
               Switch from ad-hoc Daraja integrations to a single, auditable gateway. Start payments from any platform with a server-to-server
@@ -44,10 +41,10 @@ export default function HomePage() {
             </p>
 
             <div className="hero-actions">
-              <Link className="btn btn-primary" to="/developers">
-                Integrate now <ArrowRight size={16} />
+              <Link className="btn btn-primary" to="/register">
+                Create your account <ArrowRight size={16} />
               </Link>
-              <Link className="btn btn-ghost" to="/faq">Read FAQs</Link>
+              <Link className="btn btn-ghost" to="/login">Sign in</Link>
             </div>
 
             <ul className="check-list">
@@ -59,26 +56,26 @@ export default function HomePage() {
 
           <div className="hero-panel">
             <div className="mini-card">
-              <span className="mini-label">Live flow</span>
-              <strong>Platform → IsaPay Hub → Safaricom → Platform</strong>
+              <span className="mini-label">A clear payment flow</span>
+              <strong>Your platform → IsaPay → M‑Pesa → verified webhook</strong>
             </div>
             <div className="mini-card muted-card">
-              <span className="mini-label">Status</span>
-              <strong>Created • Pending • Paid</strong>
+              <span className="mini-label">Designed for operations</span>
+              <strong>Track payment status, deliveries and reconciliation in one dashboard.</strong>
             </div>
           </div>
-        </section>
+      </section>
 
-        <section className="stat-grid">
+      <section className="stat-grid">
           {stats.map((stat) => (
             <div className="stat-card card" key={stat.label}>
               <strong>{stat.value}</strong>
               <span>{stat.label}</span>
             </div>
           ))}
-        </section>
+      </section>
 
-        <section className="feature-grid">
+      <section className="feature-grid">
           {features.map(({ icon: Icon, title, text }) => (
             <article className="feature-card card" key={title}>
               <div className="feature-icon"><Icon size={18} /></div>
@@ -86,30 +83,18 @@ export default function HomePage() {
               <p>{text}</p>
             </article>
           ))}
-        </section>
+      </section>
 
-        <section className="cta-strip card">
+      <section className="cta-strip card">
           <div>
-            <span className="eyebrow">Built for platform teams</span>
-            <h2>Centralise payment logic, not risk.</h2>
+            <span className="eyebrow">Start building</span>
+            <h2>Integrate once. Keep payment operations visible.</h2>
           </div>
           <div className="cta-links">
-            <Link className="btn btn-primary" to="/developers">View API docs</Link>
-            <Link className="btn btn-ghost" to="/privacy">Privacy <ExternalLink size={14} /></Link>
+            <Link className="btn btn-primary" to="/developers">Explore the API <ArrowRight size={16} /></Link>
+            <Link className="btn btn-ghost" to="/faq">Visit the FAQ <ExternalLink size={14} /></Link>
           </div>
-        </section>
-
-        <section className="info-links card">
-          <h3>Helpful links</h3>
-          <div className="link-grid">
-            <Link to="/developers">Developers & SDK</Link>
-            <Link to="/faq">FAQs</Link>
-            <Link to="/privacy">Privacy policy</Link>
-            <Link to="/terms">Terms of use</Link>
-            <Link to="https://github.com/isamoma003-droid/Isa_Tech_hub/blob/main/docs/INTEGRATION.md" target="_blank" rel="noopener noreferrer">Integration guide</Link>
-          </div>
-        </section>
-      </div>
+      </section>
     </div>
   );
 }

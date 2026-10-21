@@ -13,10 +13,12 @@
  */
 import { Invoice } from '../models/Invoice.js';
 import { Payment } from '../models/Payment.js';
+import { PaymentLink } from '../models/PaymentLink.js';
 import { Till } from '../models/Till.js';
 import { HttpError } from '../utils/httpError.js';
 import { DarajaError, stkPush, stkQuery } from './daraja.js';
 import { audit } from './audit.js';
+import { sendMail } from './mailer.js';
 import { enqueuePaymentEvent } from './webhooks.js';
 
 const TILL_SECRETS = '+consumerKey +consumerSecret +passkey +callbackSecret';
@@ -40,7 +42,7 @@ const isDuplicateKey = (err) => err?.code === 11000;
  * Starts a payment: records it, then asks Safaricom to send the PIN prompt.
  * @returns {Promise<{ payment, replayed: boolean, error?: string }>}
  */
-export async function createPayment(platform, { phone, amount, reference, purpose, description, metadata, idempotencyKey }) {
+export async function createPayment(platform, { phone, amount, reference, purpose, description, metadata, idempotencyKey, paymentLink, singleUseLink, customerName, customerEmail }) {
   // Same key, same answer: a platform retrying after a timeout must not prompt the payer twice.
   if (idempotencyKey) {
     const existing = await Payment.findOne({ platform: platform._id, idempotencyKey });
@@ -57,6 +59,8 @@ export async function createPayment(platform, { phone, amount, reference, purpos
   try {
     payment = await Payment.create({
       platform: platform._id,
+      paymentLink,
+      singleUseLink,
       till: till._id,
       reference,
       idempotencyKey,
@@ -64,12 +68,18 @@ export async function createPayment(platform, { phone, amount, reference, purpos
       description,
       metadata,
       phone,
+      customerName,
+      customerEmail,
       amount,
       events: [{ type: 'created', source: 'api' }],
     });
   } catch (err) {
-    if (idempotencyKey && isDuplicateKey(err)) {
-      return { payment: await Payment.findOne({ platform: platform._id, idempotencyKey }), replayed: true };
+    if (isDuplicateKey(err)) {
+      if (idempotencyKey) {
+        const existing = await Payment.findOne({ platform: platform._id, idempotencyKey });
+        if (existing) return { payment: existing, replayed: true };
+      }
+      if (paymentLink) throw new HttpError(409, 'A payment is already in progress for this link. Check the payer phone or try again shortly.');
     }
     throw err;
   }
@@ -103,6 +113,7 @@ export async function createPayment(platform, { phone, amount, reference, purpos
       },
       { returnDocument: 'after' },
     );
+    await releasePaymentLink(failed);
     return { payment: failed, replayed: false, error: "We couldn't reach M-Pesa. Please try again in a moment." };
   }
 }
@@ -139,6 +150,22 @@ export async function markPaid(payment, { receipt, paidAmount, source, note }) {
 
   if (updated) {
     if (updated.status === 'paid' && updated.metadata?.invoiceId) await settleInvoice(updated);
+    if (updated.status === 'paid' && updated.paymentLink) {
+      const update = { $inc: { successfulPayments: 1 } };
+      if (updated.singleUseLink) {
+        update.$set = { status: 'paid' };
+        update.$unset = { checkoutLock: 1 };
+      }
+      const link = await PaymentLink.findByIdAndUpdate(updated.paymentLink, update);
+      if (link && updated.customerEmail) {
+        const details = updated.receipt ? `\nM-Pesa receipt: ${updated.receipt}` : '';
+        await sendMail({
+          to: updated.customerEmail,
+          subject: `Payment received by ${updated.description || 'IsaPay'}`,
+          text: `Hello${updated.customerName ? ` ${updated.customerName}` : ''},\n\nYour payment of KES ${updated.paidAmount ?? updated.amount} has been received.${details}\nReference: ${updated.reference}\n`,
+        });
+      }
+    }
     await enqueuePaymentEvent(updated, updated.status === 'paid' ? 'payment.paid' : 'payment.disputed');
     return { outcome: updated.status, payment: updated };
   }
@@ -168,6 +195,14 @@ async function settleInvoice(payment) {
   }
 }
 
+async function releasePaymentLink(payment) {
+  if (!payment?.singleUseLink || !payment.paymentLink || !payment.idempotencyKey) return;
+  await PaymentLink.updateOne(
+    { _id: payment.paymentLink, checkoutLock: payment.idempotencyKey },
+    { $unset: { checkoutLock: 1 } },
+  );
+}
+
 export async function markFailed(payment, { resultCode, resultDesc, source, note }) {
   const updated = await Payment.findOneAndUpdate(
     { _id: payment._id, status: 'pending' },
@@ -178,9 +213,11 @@ export async function markFailed(payment, { resultCode, resultDesc, source, note
     { returnDocument: 'after' },
   );
   if (updated) {
+    await releasePaymentLink(updated);
     await enqueuePaymentEvent(updated, 'payment.failed');
     return { outcome: 'failed', payment: updated };
   }
+
   return { outcome: 'unchanged', payment: (await Payment.findById(payment._id)) || payment };
 }
 

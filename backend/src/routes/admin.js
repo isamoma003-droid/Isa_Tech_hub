@@ -13,6 +13,7 @@ import { AdminUser, STAFF_ROLES } from '../models/AdminUser.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { INVOICE_STATUSES, Invoice } from '../models/Invoice.js';
 import { PAYMENT_STATUSES, Payment } from '../models/Payment.js';
+import { PaymentLink } from '../models/PaymentLink.js';
 import { Platform } from '../models/Platform.js';
 import { Till, envSuffix } from '../models/Till.js';
 import { WebhookDelivery } from '../models/WebhookDelivery.js';
@@ -288,6 +289,83 @@ router.post('/payments/:id/resend-webhook', canChange, async (req, res) => {
   if (!delivery) throw conflict(payment.status === 'pending' ? 'Nothing to send until the payment is settled' : 'This platform has no webhook URL');
   await audit(req, 'payment.webhook_resent', { type: 'payment', id: payment.id, label: payment.reference }, { event: delivery.event });
   res.status(202).json(await paymentDetail(req, payment));
+});
+
+// --- Hosted payment links --------------------------------------------------------------------
+
+const linkAmount = z.coerce.number().int().min(env.minAmount).max(env.maxAmount);
+const createPaymentLinkSchema = z
+  .object({
+    platform: z.string().regex(/^[a-f0-9]{24}$/i, 'Choose a platform'),
+    title: z.string().trim().min(2, 'Enter a link name').max(100),
+    description: z.string().trim().max(500).optional(),
+    amountType: z.enum(['fixed', 'customer']),
+    amount: linkAmount.optional(),
+    minAmount: linkAmount.optional(),
+    maxAmount: linkAmount.optional(),
+    usage: z.enum(['reusable', 'single-use']).default('reusable'),
+    collectName: z.boolean().default(true),
+    collectEmail: z.boolean().default(true),
+    collectReference: z.boolean().default(true),
+  })
+  .superRefine((value, ctx) => {
+    if (value.amountType === 'fixed' && value.amount === undefined) {
+      ctx.addIssue({ code: 'custom', path: ['amount'], message: 'Enter the fixed amount' });
+    }
+    if (value.amountType === 'customer' && (value.minAmount ?? env.minAmount) > (value.maxAmount ?? env.maxAmount)) {
+      ctx.addIssue({ code: 'custom', path: ['maxAmount'], message: 'Maximum amount must be at least the minimum' });
+    }
+  });
+
+const paymentLinkView = (link) => ({
+  ...link.toPublic(),
+  url: `${env.appUrl}/pay/${link.slug}`,
+  platform: link.platform?.name ? { id: link.platform.id, name: link.platform.name, slug: link.platform.slug } : link.platform,
+});
+
+router.get('/payment-links', async (req, res) => {
+  const filter = req.merchant ? { platform: { $in: req.ownPlatforms } } : {};
+  const links = await PaymentLink.find(filter).sort({ createdAt: -1 }).populate('platform', 'name slug');
+  res.json({ paymentLinks: links.map(paymentLinkView) });
+});
+
+router.post('/payment-links', canChange, validate(createPaymentLinkSchema), async (req, res) => {
+  const body = req.valid.body;
+  const platform = await findPlatform(req, body.platform);
+  if (platform.status !== 'active') throw conflict('Enable this platform before creating a payment link');
+
+  const link = await PaymentLink.create({
+    platform: platform._id,
+    slug: randomToken(16).toLowerCase(),
+    title: body.title,
+    description: body.description,
+    amountType: body.amountType,
+    ...(body.amountType === 'fixed'
+      ? { amount: body.amount }
+      : { minAmount: body.minAmount ?? env.minAmount, maxAmount: body.maxAmount ?? env.maxAmount }),
+    usage: body.usage,
+    collectName: body.collectName,
+    collectEmail: body.collectEmail,
+    collectReference: body.collectReference,
+    createdBy: req.admin._id,
+  });
+  await link.populate('platform', 'name slug');
+  await audit(req, 'payment_link.created', { type: 'payment-link', id: link.id, label: link.title }, { platform: platform.slug, amountType: link.amountType, usage: link.usage });
+  res.status(201).json({ paymentLink: paymentLinkView(link) });
+});
+
+router.patch('/payment-links/:id', canChange, validate(z.object({ active: z.boolean() })), async (req, res) => {
+  const filter = { _id: objectId(req.params.id, 'Payment link not found'), ...(req.merchant ? { platform: { $in: req.ownPlatforms } } : {}) };
+  const link = await PaymentLink.findOne(filter).populate('platform', 'name slug');
+  if (!link) throw notFound('Payment link not found');
+  if (link.status === 'paid') throw conflict('A single-use link that has been paid cannot be reactivated');
+  const status = req.valid.body.active ? 'active' : 'disabled';
+  if (link.status !== status) {
+    link.status = status;
+    await link.save();
+    await audit(req, `payment_link.${status === 'active' ? 'enabled' : 'disabled'}`, { type: 'payment-link', id: link.id, label: link.title });
+  }
+  res.json({ paymentLink: paymentLinkView(link) });
 });
 
 // --- Platforms -------------------------------------------------------------------------------

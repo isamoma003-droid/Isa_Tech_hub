@@ -38,14 +38,18 @@ const authHeaders = () => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
-async function send(path, { method = 'GET', body } = {}) {
+async function send(path, { method = 'GET', body, signal } = {}) {
   try {
     return await fetch(`${API_URL}/admin${path}`, {
       method,
       headers: { ...authHeaders(), ...(body ? { 'Content-Type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
+      signal,
     });
-  } catch {
+  } catch (error) {
+    if (error?.name === 'TimeoutError') {
+      throw new ApiError(0, 'IsaPay account settings took too long to load. Check that the API is available and try again.');
+    }
     throw new ApiError(0, 'Cannot reach IsaPay. Check your connection and that the API is running.');
   }
 }
@@ -63,6 +67,24 @@ async function fail(res) {
 
 export async function api(path, options) {
   const res = await send(path, options);
+  if (!res.ok) await fail(res);
+  return res.status === 204 ? null : res.json();
+}
+
+export async function publicApi(path, { method = 'GET', body, signal } = {}) {
+  let res;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined,
+      signal,
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') throw error;
+    if (error?.name === 'TimeoutError') throw new ApiError(0, 'The request took too long. Please try again.');
+    throw new ApiError(0, 'Cannot reach IsaPay. Check your connection and try again.');
+  }
   if (!res.ok) await fail(res);
   return res.status === 204 ? null : res.json();
 }

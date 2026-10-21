@@ -15,11 +15,13 @@ import { AdminUser } from '../src/models/AdminUser.js';
 import { AuditLog } from '../src/models/AuditLog.js';
 import { Invoice } from '../src/models/Invoice.js';
 import { Payment } from '../src/models/Payment.js';
+import { PaymentLink } from '../src/models/PaymentLink.js';
 import { Till } from '../src/models/Till.js';
 import { assignSlots } from '../src/services/bootstrap.js';
 import { setDarajaTransport } from '../src/services/daraja.js';
 import { setGoogleCertsFetcher } from '../src/services/google.js';
 import { setMailTransport } from '../src/services/mailer.js';
+import { markPaid } from '../src/services/payments.js';
 
 const uri = process.env.MONGODB_URI_TEST;
 const PASSWORD = 'correct horse battery';
@@ -127,7 +129,13 @@ describe('Accounts', { skip: !uri && 'set MONGODB_URI_TEST to run the API tests'
   test('the sign-in page learns what it can offer', async () => {
     const config = await api('GET', '/auth/config');
     assert.equal(config.status, 200);
-    assert.deepEqual(config.body, { signup: true, google: { clientId: GOOGLE_CLIENT }, email: true });
+    assert.deepEqual(config.body, {
+      signup: true,
+      google: { clientId: GOOGLE_CLIENT },
+      email: true,
+      support: { email: 'support@isapay.co.ke', phone: '+254 700 000 000' },
+      limits: { minAmount: 1, maxAmount: 150_000, currency: 'KES' },
+    });
   });
 
   test('a business signs up with email and password, and confirms its email', async () => {
@@ -351,6 +359,65 @@ describe('Accounts', { skip: !uri && 'set MONGODB_URI_TEST to run the API tests'
     assert.equal(await signIn('amina@duka.test'), undefined, 'the old password is gone');
     merchant.token = await signIn('amina@duka.test', 'a brand new passphrase');
     assert.ok(merchant.token);
+  });
+
+  test('contact support sends a validated message through the configured mail transport', async () => {
+    const invalid = await api('POST', '/auth/contact', null, { name: 'A', email: 'bad', subject: 'Help', message: 'Short' });
+    assert.equal(invalid.status, 400);
+
+    const sent = await api('POST', '/auth/contact', null, {
+      name: 'Amina Hassan',
+      email: 'amina@duka.test',
+      subject: 'Checkout help',
+      message: 'A customer needs help completing an M-Pesa checkout.',
+    });
+    assert.equal(sent.status, 202);
+    const [mail] = mailTo('support@isapay.co.ke');
+    assert.equal(mail.replyTo, 'amina@duka.test');
+    assert.match(mail.subject, /Checkout help/);
+    assert.match(mail.text, /Amina Hassan/);
+  });
+
+  test('a hosted payment link creates one-time STK requests and closes after successful payment', async () => {
+    const created = await api('POST', '/payment-links', adminToken, {
+      platform: isaPlatform.platform.id,
+      title: 'Ticket order',
+      amountType: 'fixed',
+      amount: 250,
+      usage: 'single-use',
+      collectName: true,
+      collectEmail: true,
+      collectReference: true,
+    });
+    assert.equal(created.status, 201);
+    const link = created.body.paymentLink;
+    assert.equal(link.amount, 250);
+    assert.match(link.url, new RegExp(`/pay/${link.slug}$`));
+
+    const checkout = await request('GET', `/api/checkout/${link.slug}`);
+    assert.equal(checkout.status, 200);
+    assert.equal(checkout.body.paymentLink.title, 'Ticket order');
+
+    const requestId = crypto.randomUUID();
+    const body = {
+      phone: nextPhone(),
+      amount: 250,
+      name: 'Amina Hassan',
+      email: 'payer@duka.test',
+      reference: 'ORDER-123',
+      requestId,
+    };
+    const started = await request('POST', `/api/checkout/${link.slug}/pay`, { body });
+    assert.equal(started.status, 201);
+    const replay = await request('POST', `/api/checkout/${link.slug}/pay`, { body });
+    assert.equal(replay.status, 200);
+    assert.equal(replay.body.replayed, true);
+
+    const payment = await Payment.findById(started.body.payment.id);
+    await markPaid(payment, { receipt: 'LINK123456', paidAmount: 250, source: 'test' });
+    assert.equal((await PaymentLink.findById(link.id)).status, 'paid');
+    assert.equal((await request('GET', `/api/checkout/${link.slug}`)).status, 404);
+    assert.match(mailTo('payer@duka.test')[0].subject, /Payment received/);
   });
 
   test('Google: a new person gets a merchant account, then signs straight in', async () => {

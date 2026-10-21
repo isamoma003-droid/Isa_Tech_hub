@@ -28,6 +28,7 @@ const limiter = (limit, minutes, error) =>
 const signInLimiter = limiter(10, 15, 'Too many sign-in attempts, please wait 15 minutes');
 const signUpLimiter = limiter(5, 60, 'Too many new accounts from this network, please try again in an hour');
 const emailLimiter = limiter(5, 15, 'Too many emails asked for, please wait 15 minutes');
+const contactLimiter = limiter(5, 15, 'Too many support messages from this network, please try again later');
 
 const ME = '+passwordHash +googleId';
 const loadMe = (id) => AdminUser.findById(id).select(ME);
@@ -54,7 +55,13 @@ const website = z.union([z.literal(''), z.string().trim().max(200).url('Website:
 
 // What the sign-in page offers.
 router.get('/config', (_req, res) => {
-  res.json({ signup: env.signup, google: googleEnabled() ? { clientId: env.googleClientIds[0] } : null, email: mailEnabled() });
+  res.json({
+    signup: env.signup,
+    google: googleEnabled() ? { clientId: env.googleClientIds[0] } : null,
+    email: mailEnabled(),
+    support: { email: env.supportEmail, phone: env.supportPhone },
+    limits: { minAmount: env.minAmount, maxAmount: env.maxAmount, currency: 'KES' },
+  });
 });
 
 const loginSchema = z.object({ email, password: z.string().min(1, 'Enter your password').max(200) });
@@ -158,6 +165,26 @@ router.post('/forgot-password', emailLimiter, validate(z.object({ email })), asy
   }
   // Same answer either way, so this can't be used to find out who has an account.
   res.json({ ok: true, email: mailEnabled() });
+});
+
+const contactSchema = z.object({
+  name: z.string().trim().min(2, 'Enter your name').max(80),
+  email,
+  subject: z.string().trim().min(3, 'Enter a subject').max(120).refine((value) => !/[\r\n]/.test(value), 'Subject must be a single line'),
+  message: z.string().trim().min(10, 'Please include a little more detail').max(5000),
+});
+
+router.post('/contact', contactLimiter, validate(contactSchema), async (req, res) => {
+  if (!mailEnabled()) throw new HttpError(503, 'Support email is temporarily unavailable. Please try again later.');
+  const { name, email: senderEmail, subject, message } = req.valid.body;
+  const sent = await sendMail({
+    to: env.supportEmail,
+    replyTo: senderEmail,
+    subject: `IsaPay support: ${subject}`,
+    text: `Support request from ${name} <${senderEmail}>\n\n${message}\n`,
+  });
+  if (!sent) throw new HttpError(502, 'We could not send your message. Please try again.');
+  res.status(202).json({ ok: true });
 });
 
 router.post('/reset-password', signInLimiter, validate(z.object({ token: z.string().max(200), password: newPassword })), async (req, res) => {
@@ -300,7 +327,7 @@ router.delete('/google', requireAdmin, async (req, res) => {
 router.post('/verify-email/resend', requireAdmin, emailLimiter, async (req, res) => {
   const user = await loadMe(req.admin._id);
   if (user.emailVerifiedAt) return res.json({ sent: false, verified: true });
-  if (!mailEnabled()) throw new HttpError(503, "This server can't send email yet (SMTP_URL). An IsaPay admin can confirm your account instead.");
+  if (!mailEnabled()) throw new HttpError(503, "This server can't send email yet. An IsaPay admin can confirm your account instead.");
   res.json({ sent: await sendEmailCheck(user), verified: false });
 });
 

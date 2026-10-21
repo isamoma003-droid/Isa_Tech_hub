@@ -33,6 +33,7 @@ Each platform keeps its own data (bookings, books, organizer payouts). The Hub h
   - A payments search with filters (date, platform, status, receipt, phone, reference) and CSV export.
   - A per-payment timeline showing what was sent, what Safaricom answered, and every webhook attempt, with "Check with Safaricom" and "Resend webhook" buttons.
   - Platform onboarding: API key and webhook secret shown once, rotate either, send a test webhook, disable a platform.
+  - Hosted **Payment links**: create fixed-amount or customer-entered KES links, choose reusable or single-use, share a secure M-Pesa checkout, and track receipts with the payment.
   - Numbered M-Pesa tills ("M-Pesa till 1", "M-Pesa till 2"…), each with its own numbered Daraja keys, and an audit log.
   - A **Developers** page for partners: the API base URL, endpoints, webhook signature checks in Node.js, PHP and Python, and a download of the Node.js client.
   - **Installable as an app** on Windows, macOS, Android and iPhone (see [Install the dashboard as an app](#install-the-dashboard-as-an-app)).
@@ -40,7 +41,7 @@ Each platform keeps its own data (bookings, books, organizer payouts). The Hub h
   - Businesses open a **merchant** account themselves at `/register`, with email and password or **Sign in with Google**.
   - Each merchant sees only its own platforms, tills, payments, invoices and activity.
   - Live payments start once an admin approves the business; a sandbox till works before that.
-  - Password reset and email confirmation by email (optional SMTP), and an **Accounts** page where the team approves merchants and manages people.
+  - Password reset and email confirmation by email (Brevo or legacy SMTP), a public support form, and an **Accounts** page where the team approves merchants and manages people.
 - **Roles**: *admin* can change everything; *viewer* is read-only, and phone numbers are masked for viewers; *merchant* changes only its own things.
 - **Tills** are numbered, and each till's Daraja keys carry its number, so keys for different tills never overlap:
 
@@ -95,14 +96,18 @@ Anyone can open a merchant account from the sign-in page (**Create a merchant ac
 
 People who only use Google can add a password under Your account; IsaPay asks for it again before any till change.
 
-**Email.** With `SMTP_URL` set, IsaPay emails:
+**Email.** With Brevo configured (`MAIL_PROVIDER=brevo`, `BREVO_API_KEY`, and a verified `MAIL_FROM` sender), IsaPay sends:
 - password-reset links (one-time, valid for an hour, and they sign out every other session);
 - email-confirmation links;
 - admins when a business signs up;
 - merchants when they're approved or not;
 - merchants whenever their payout details change.
+- support-form submissions to `SUPPORT_EMAIL`, with replies directed to the sender;
+- checkout receipts to customers when the payment link collects an email address and M-Pesa confirms payment.
 
-Without email, nothing is sent: admins use **New temporary password** and **Mark email confirmed** on the account's page.
+Legacy SMTP remains available with `MAIL_PROVIDER=smtp` and `SMTP_URL`. Set `SUPPORT_PHONE` for the contact page; replace the documented placeholder address/phone with monitored business contacts. Set `APP_URL` if email links should point somewhere other than `CLIENT_ORIGIN`. Without an email provider, admins use **New temporary password** and **Mark email confirmed** on the account's page, and the support page shows its direct contact details.
+
+**Hosted payment links.** In the dashboard, open **Payment links → Create link**, choose a platform, and set a fixed KES amount or a payer-entered amount range. Choose reusable or single-use, and whether checkout collects the payer's name, email (for a receipt), and order/reference. IsaPay sends an M-Pesa STK prompt, tracks the payment with the usual Safaricom confirmation and webhook flow, and turns off a single-use link after its first confirmed payment. Copy and share the `https://<dashboard>/pay/<link-slug>` URL.
 
 **Your account** (every user): name and phone; for merchants, business details and **payout details** (M-Pesa number or bank account, where IsaPay sends money it collected for them, shown to admins next to each payout to send); set or change the password; link or unlink Google; resend the email confirmation; **sign out everywhere else**.
 
@@ -123,7 +128,19 @@ The dashboard sends `Referrer-Policy: strict-origin-when-cross-origin` (in `fron
 
 ### Setting up email
 
-Set `SMTP_URL` to any SMTP server. For Gmail: turn on 2-step verification, create an **app password** (Google Account → Security → App passwords), then set `SMTP_URL=smtps://you%40gmail.com:<app password>@smtp.gmail.com:465` and `MAIL_FROM=IsaPay <you@gmail.com>`. Links in emails point at the first `CLIENT_ORIGIN` (or `APP_URL`).
+Brevo is the recommended provider. In Brevo, create a transactional API key and verify the sender email/domain. Configure:
+
+```env
+MAIL_PROVIDER=brevo
+BREVO_API_KEY=your-brevo-api-key
+MAIL_FROM=IsaPay <no-reply@your-verified-domain.example>
+SUPPORT_EMAIL=support@your-domain.example
+SUPPORT_PHONE=+254 700 000 000
+```
+
+Set these on Render (the key is a secret) or in `backend/.env` locally. `MAIL_FROM` must be a verified Brevo sender. Password-reset and account messages, contact-form submissions, and checkout receipts all use this provider. Email links point at the first `CLIENT_ORIGIN`, or `APP_URL` if set.
+
+Existing SMTP deployments remain supported with `MAIL_PROVIDER=smtp`, `SMTP_URL`, and `MAIL_FROM`. For Gmail, turn on 2-step verification and create an **app password** (Google Account → Security → App passwords), then configure `SMTP_URL=smtps://you%40gmail.com:<app password>@smtp.gmail.com:465`.
 
 ## Repository layout
 
@@ -146,7 +163,7 @@ backend/src/
   services/google.js    checks "Sign in with Google" ID tokens with Google's keys
   services/mailer.js    email over SMTP_URL (or a log line when it's not set)
   services/accounts.js  one-time email links, sign-up and approval emails
-  models/               Till, Platform, Payment, WebhookDelivery, AdminUser (team and merchants),
+  models/               Till, Platform, Payment, PaymentLink, WebhookDelivery, AdminUser (team and merchants),
                         AuthToken (email links), AuditLog, Invoice
   utils/network.js      keeps merchants' webhook URLs on the public internet
   services/billing.js   plans, monthly invoices, M-Pesa collection, suspension when unpaid

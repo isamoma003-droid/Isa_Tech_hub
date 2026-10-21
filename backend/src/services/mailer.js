@@ -1,42 +1,58 @@
-// Outgoing email through any SMTP server (SMTP_URL), e.g. Gmail with an app password. Without
-// SMTP_URL nothing is sent: the server logs that an email was skipped, and admins reset
-// passwords from the Accounts page instead.
+// Outgoing transactional email through Brevo's API or a legacy SMTP server.
 import nodemailer from 'nodemailer';
 import { env } from '../config/env.js';
 
 let transport = null;
 let testTransport = null;
 
-/** Tests: deliver through this object's sendMail(message) instead of SMTP. null restores SMTP. */
+/** Tests: deliver through this object's sendMail(message) instead of the live provider. */
 export function setMailTransport(fake) {
   testTransport = fake;
 }
 
-export const mailEnabled = () => Boolean(testTransport || env.smtpUrl);
+const provider = () => (env.mailProvider === 'auto' ? (env.brevoApiKey ? 'brevo' : 'smtp') : env.mailProvider);
+export const mailEnabled = () => Boolean(testTransport || (provider() === 'brevo' ? env.brevoApiKey : env.smtpUrl));
 
 function sender() {
-  if (env.mailFrom) return env.mailFrom;
-  try {
-    const user = decodeURIComponent(new URL(env.smtpUrl).username);
-    if (user.includes('@')) return `IsaPay <${user}>`;
-  } catch {
-    // Not a URL: fall through.
-  }
-  return 'IsaPay <no-reply@isapay.local>';
+  const value = env.mailFrom || 'IsaPay <no-reply@isapay.co.ke>';
+  const match = /^(.*?)\s*<([^<>]+)>$/.exec(value);
+  return match ? { name: match[1].trim() || 'IsaPay', email: match[2].trim() } : { name: 'IsaPay', email: value.trim() };
 }
 
 /**
- * Sends one email. Never throws: a mail problem must not undo what the person just did.
+ * A mail problem must not undo the account or payment action that triggered it.
  * @returns {Promise<boolean>} whether it was handed to the mail server
  */
-export async function sendMail({ to, subject, text }) {
+export async function sendMail({ to, subject, text, replyTo }) {
   if (!mailEnabled()) {
-    console.log(`Email to ${to} not sent ("${subject}"): set SMTP_URL to send email`);
+    console.log(`Email to ${to} not sent ("${subject}"): configure BREVO_API_KEY or SMTP_URL`);
     return false;
   }
   try {
-    const via = testTransport || (transport ??= nodemailer.createTransport(env.smtpUrl));
-    await via.sendMail({ from: sender(), to, subject, text });
+    if (testTransport) {
+      await testTransport.sendMail({ from: sender(), to, subject, text, ...(replyTo ? { replyTo } : {}) });
+    } else if (provider() === 'brevo') {
+      const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: { 'api-key': env.brevoApiKey, 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({
+          sender: sender(),
+          to: [{ email: to }],
+          subject,
+          textContent: text,
+          ...(replyTo ? { replyTo: { email: replyTo } } : {}),
+        }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!response.ok) {
+        console.error(`Could not email ${to} ("${subject}"): Brevo returned HTTP ${response.status}`);
+        return false;
+      }
+    } else {
+      const from = env.mailFrom || `${sender().name} <${sender().email}>`;
+      const via = (transport ??= nodemailer.createTransport(env.smtpUrl));
+      await via.sendMail({ from, to, subject, text, ...(replyTo ? { replyTo } : {}) });
+    }
     return true;
   } catch (err) {
     console.error(`Could not email ${to} ("${subject}"):`, err.message);

@@ -1,64 +1,43 @@
-import { Twitter, Facebook, Linkedin, Github, Mail } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Brand } from './Logo.jsx';
 
 export default function Footer() {
   return (
     <footer className="app-footer">
-      <div className="container footer-grid">
+      <div className="footer-content">
         <div className="footer-brand">
           <Brand subtitle="by ISA Tech" />
-          <p className="muted">IsaPay (ISA Tech Hub) — a single M‑Pesa gateway for multiple platforms.</p>
+          <p>One M-Pesa gateway for platforms, with reliable payments and signed webhooks.</p>
         </div>
 
         <nav className="footer-links" aria-label="Footer">
           <div className="footer-column">
-            <h4>Product</h4>
-            <ul>
-              <li><a href="/home">About IsaPay</a></li>
-              <li><a href="/developers">Developers & API</a></li>
-              <li><a href="/payments">Payments</a></li>
-            </ul>
+            <h2>Explore</h2>
+            <Link to="/">Home</Link>
+            <Link to="/developers">Developers &amp; API</Link>
+            <Link to="/faq">Frequently asked questions</Link>
+            <Link to="/contact">Contact support</Link>
           </div>
 
           <div className="footer-column">
-            <h4>Docs & support</h4>
-            <ul>
-              <li><a href="/developers">API docs</a></li>
-              <li><a href="/developers#integration">Integration guide</a></li>
-              <li><a href="/account">FAQs & account help</a></li>
-            </ul>
+            <h2>Resources</h2>
+            <a href="/sdk/isa-hub.cjs" download>Download Node.js SDK</a>
+            <Link to="/developers">Integration guide</Link>
+            <Link to="/contact">Support center</Link>
           </div>
 
           <div className="footer-column">
-            <h4>Learn more</h4>
-            <ul>
-              <li><a href="/developers#integration">Integration guide</a></li>
-              <li><a href="/developers#sdk">SDK downloads</a></li>
-              <li><a href="https://github.com/isamoma003-droid/Isa_Tech_hub/blob/main/docs/INTEGRATION.md" target="_blank" rel="noopener noreferrer">Full docs (GitHub)</a></li>
-              <li><a href="/developers#postman">Postman collection</a></li>
-            </ul>
+            <h2>Account &amp; legal</h2>
+            <Link to="/login">Sign in</Link>
+            <Link to="/register">Create an account</Link>
+            <Link to="/privacy">Privacy policy</Link>
+            <Link to="/terms">Terms of use</Link>
           </div>
         </nav>
-
-        <div className="footer-social">
-          <h4>Connect</h4>
-          <div className="social-icons">
-            <a href="https://twitter.com/isa_tech" target="_blank" rel="noopener noreferrer" aria-label="ISA Tech on Twitter"><Twitter size={18} /></a>
-            <a href="https://facebook.com/isa-tech" target="_blank" rel="noopener noreferrer" aria-label="ISA Tech on Facebook"><Facebook size={18} /></a>
-            <a href="https://linkedin.com/company/isa-tech" target="_blank" rel="noopener noreferrer" aria-label="ISA Tech on LinkedIn"><Linkedin size={18} /></a>
-            <a href="https://github.com/isamoma003-droid" target="_blank" rel="noopener noreferrer" aria-label="ISA Tech on GitHub"><Github size={18} /></a>
-          </div>
-
-          <div className="contact">
-            <a href="mailto:hello@isatech.co.ke" aria-label="Email ISA Tech"><Mail size={14} /> hello@isatech.co.ke</a>
-          </div>
-        </div>
       </div>
 
       <div className="footer-bottom">
-        <div className="container">
-          <small className="muted">© {new Date().getFullYear()} ISA Tech — IsaPay. All rights reserved.</small>
-        </div>
+        <small>© {new Date().getFullYear()} ISA Tech · IsaPay. All rights reserved.</small>
       </div>
     </footer>
   );

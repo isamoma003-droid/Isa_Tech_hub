@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom';
-import { Brand } from '../components/Logo.jsx';
 
 const faqs = [
   {
@@ -29,16 +28,12 @@ export default function FAQPage() {
     <div className="page container">
       <header className="page-header">
         <div>
-          <Brand subtitle="by ISA Tech" />
-          <p className="subtitle muted">Common questions about IsaPay and ISA Tech Hub.</p>
+          <h1>Frequently asked questions</h1>
+          <p className="subtitle muted">Answers about IsaPay and the ISA Tech Hub.</p>
         </div>
       </header>
 
       <article className="card stack">
-        <section>
-          <h2>Frequently asked questions</h2>
-        </section>
-
         {faqs.map(({ question, answer }) => (
           <section key={question}>
             <h3>{question}</h3>

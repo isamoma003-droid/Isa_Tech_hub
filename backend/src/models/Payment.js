@@ -24,6 +24,8 @@ export const resultMessage = (code, fallback) =>
 const paymentSchema = new Schema(
   {
     platform: { type: Schema.Types.ObjectId, ref: 'Platform', required: true, index: true },
+    paymentLink: { type: Schema.Types.ObjectId, ref: 'PaymentLink', index: true },
+    singleUseLink: { type: Boolean, default: false },
     till: { type: Schema.Types.ObjectId, ref: 'Till', required: true },
     // The platform's own id for what is being paid for (order, booking, donation…).
     reference: { type: String, required: true, trim: true, maxlength: 64 },
@@ -32,6 +34,8 @@ const paymentSchema = new Schema(
     description: { type: String, trim: true, maxlength: 100 },
     metadata: { type: Schema.Types.Mixed, default: undefined },
     phone: { type: String, required: true },
+    customerName: { type: String, trim: true, maxlength: 80 },
+    customerEmail: { type: String, trim: true, lowercase: true, maxlength: 120 },
     amount: { type: Number, required: true, min: 1 },
     currency: { type: String, default: 'KES' },
     status: { type: String, enum: PAYMENT_STATUSES, default: 'pending', index: true },
@@ -74,6 +78,10 @@ paymentSchema.index(
   { unique: true, partialFilterExpression: { idempotencyKey: { $type: 'string' } } },
 );
 paymentSchema.index({ platform: 1, reference: 1, createdAt: -1 });
+paymentSchema.index(
+  { paymentLink: 1, status: 1 },
+  { unique: true, partialFilterExpression: { singleUseLink: true, status: 'pending' } },
+);
 paymentSchema.index({ status: 1, createdAt: 1 });
 paymentSchema.index({ createdAt: -1 });
 paymentSchema.index({ phone: 1, createdAt: -1 });
@@ -97,6 +105,9 @@ paymentSchema.methods.toPlatform = function toPlatform(platformSlug) {
     paidAmount: this.paidAmount ?? null,
     currency: this.currency,
     phone: this.phone,
+    ...(this.customerName ? { customerName: this.customerName } : {}),
+    ...(this.customerEmail ? { customerEmail: this.customerEmail } : {}),
+    ...(this.paymentLink ? { paymentLink: String(this.paymentLink) } : {}),
     status: this.status,
     receipt: this.receipt || null,
     resultCode: this.resultCode ?? null,
@@ -118,6 +129,8 @@ paymentSchema.methods.toAdminRow = function toAdminRow() {
     amount: this.amount,
     paidAmount: this.paidAmount ?? null,
     phone: maskPhone(this.phone),
+    ...(this.customerName ? { customerName: this.customerName } : {}),
+    ...(this.customerEmail ? { customerEmail: this.customerEmail } : {}),
     status: this.status,
     receipt: this.receipt || null,
     message: this.message,

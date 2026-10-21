@@ -71,6 +71,14 @@ services:
       # Email for password resets, email checks and approvals, e.g. Gmail with an app password:
       # smtps://you%40gmail.com:<app password>@smtp.gmail.com:465. Leave empty to send nothing
       # (admins then reset passwords from Accounts).
+      - key: MAIL_PROVIDER
+        value: brevo
+      - key: BREVO_API_KEY
+        sync: false
+      - key: SUPPORT_EMAIL
+        value: support@isapay.co.ke
+      - key: SUPPORT_PHONE
+        value: "+254 700 000 000"
       - key: SMTP_URL
         sync: false
       - key: MAIL_FROM

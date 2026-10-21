@@ -90,7 +90,7 @@ export default function DevelopersPage() {
   const [tab, setTab] = useState('curl');
 
   return (
-    <>
+    <div className="public-content developers-page">
       <PageHeader
         title="Developers"
         subtitle={`Use ${BRAND.name} as the M-Pesa payment gateway for any platform: yours or a partner's.`}
@@ -229,6 +229,6 @@ export default function DevelopersPage() {
         </div>
         <CodeBlock title={SAMPLES[tab].title} code={SAMPLES[tab].code} />
       </section>
-    </>
+    </div>
   );
 }

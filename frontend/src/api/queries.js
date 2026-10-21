@@ -21,6 +21,7 @@ export const usePayment = (id) =>
 
 export const usePlatforms = () => useQuery({ queryKey: ['platforms'], queryFn: () => api('/platforms') });
 export const usePlatform = (id) => useQuery({ queryKey: ['platform', id], queryFn: () => api(`/platforms/${id}`) });
+export const usePaymentLinks = () => useQuery({ queryKey: ['payment-links'], queryFn: () => api('/payment-links') });
 export const useTills = () => useQuery({ queryKey: ['tills'], queryFn: () => api('/tills') });
 export const useTill = (id) => useQuery({ queryKey: ['till', id], queryFn: () => api(`/tills/${id}`) });
 export const useAudit = (filters) =>
@@ -53,7 +54,13 @@ export const useInvoices = (filters) =>
   useQuery({ queryKey: ['invoices', filters], queryFn: () => api(`/invoices${queryString(filters)}`), placeholderData: keepPreviousData });
 
 // What the sign-in page can offer: sign-up, Google, email. Public.
-export const useAuthConfig = () => useQuery({ queryKey: ['auth-config'], queryFn: () => api('/auth/config'), staleTime: 5 * 60_000, retry: 1 });
+export const useAuthConfig = () =>
+  useQuery({
+    queryKey: ['auth-config'],
+    queryFn: () => api('/auth/config', { signal: AbortSignal.timeout(30_000) }),
+    staleTime: 5 * 60_000,
+    retry: 1,
+  });
 
 // Staff: the team and the merchants that signed up.
 export const useAccounts = (filters) =>

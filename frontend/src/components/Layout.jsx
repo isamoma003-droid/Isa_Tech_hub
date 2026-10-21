@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Blocks, Code2, CreditCard, Download, History, LayoutDashboard, LogOut, Menu, ReceiptText, Smartphone, Users, X } from 'lucide-react';
+import { Blocks, Code2, CreditCard, Download, History, LayoutDashboard, Link2, LogOut, Menu, ReceiptText, Smartphone, Users, X } from 'lucide-react';
 import { useHealth } from '../api/queries.js';
 import { BRAND } from '../brand.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -14,6 +14,7 @@ const STAFF_NAV = [
     links: [
       { to: '/', label: 'Overview', icon: LayoutDashboard, end: true },
       { to: '/payments', label: 'Payments', icon: CreditCard },
+      { to: '/payment-links', label: 'Payment links', icon: Link2 },
       { to: '/billing', label: 'Billing & revenue', icon: ReceiptText },
     ],
   },
@@ -40,6 +41,7 @@ const MERCHANT_NAV = [
     links: [
       { to: '/', label: 'Overview', icon: LayoutDashboard, end: true },
       { to: '/payments', label: 'Payments', icon: CreditCard },
+      { to: '/payment-links', label: 'Payment links', icon: Link2 },
       { to: '/billing', label: 'Billing & payouts', icon: ReceiptText },
     ],
   },

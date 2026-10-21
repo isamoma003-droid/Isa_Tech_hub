@@ -4,7 +4,7 @@ import { useAuthConfig } from '../api/queries.js';
 import { BRAND } from '../brand.js';
 import AuthLayout from '../components/AuthLayout.jsx';
 import GoogleButton, { OrDivider } from '../components/GoogleButton.jsx';
-import { ErrorMessage, Field, Spinner } from '../components/ui.jsx';
+import { ErrorMessage, Field } from '../components/ui.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 
 const BLANK = { name: '', businessName: '', email: '', phone: '', website: '', password: '' };
@@ -13,15 +13,13 @@ const BLANK = { name: '', businessName: '', email: '', phone: '', website: '', p
 // once; live payments start once an IsaPay admin approves the business.
 export default function RegisterPage() {
   const { admin, register, googleSignIn } = useAuth();
-  const { data: config, isPending } = useAuthConfig();
+  const { data: config, error: configError, refetch: retryConfig } = useAuthConfig();
   const [form, setForm] = useState(BLANK);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
   // Signed in (just now, or already): on to the dashboard, with a welcome for a new account.
   if (admin) return <Navigate to="/" replace state={busy ? { welcome: true } : undefined} />;
-  if (isPending) return <Spinner />;
-
   const set = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
   const fieldError = (path) => error?.details?.find?.((d) => d.path === path)?.message;
 
@@ -55,6 +53,14 @@ export default function RegisterPage() {
 
   return (
     <AuthLayout title="Create your account" subtitle={`Start taking M-Pesa payments with ${BRAND.name}`} onSubmit={onSubmit}>
+      {configError && (
+        <div className="notice notice-warn" role="status">
+          <p>Couldn't load account settings. You can still submit the form, but IsaPay's API must be available to create your account.</p>
+          <button type="button" className="btn btn-ghost btn-small" onClick={() => retryConfig()}>
+            Retry settings
+          </button>
+        </div>
+      )}
       <ErrorMessage error={error} title="Couldn't create your account" />
       <GoogleButton text="signup_with" onCredential={(credential) => run(() => googleSignIn(credential))} />
       <OrDivider />

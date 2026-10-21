@@ -1,11 +1,14 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import Layout from './components/Layout.jsx';
+import PublicLayout from './components/PublicLayout.jsx';
 import { Spinner } from './components/ui.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import AccountPage from './pages/AccountPage.jsx';
 import { AccountDetailPage, AccountsPage } from './pages/AccountsPage.jsx';
 import AuditPage from './pages/AuditPage.jsx';
 import BillingPage from './pages/BillingPage.jsx';
+import CheckoutPage from './pages/CheckoutPage.jsx';
+import ContactPage from './pages/ContactPage.jsx';
 import DevelopersPage from './pages/DevelopersPage.jsx';
 import FAQPage from './pages/FAQPage.jsx';
 import HomePage from './pages/HomePage.jsx';
@@ -15,6 +18,7 @@ import NewTillPage from './pages/NewTillPage.jsx';
 import OverviewPage from './pages/OverviewPage.jsx';
 import { ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from './pages/PasswordPages.jsx';
 import PaymentPage from './pages/PaymentPage.jsx';
+import PaymentLinksPage from './pages/PaymentLinksPage.jsx';
 import PaymentsPage from './pages/PaymentsPage.jsx';
 import PlatformPage from './pages/PlatformPage.jsx';
 import PlatformsPage from './pages/PlatformsPage.jsx';
@@ -41,19 +45,22 @@ function StaffOnly({ children }) {
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<HomePage />} />
-      <Route path="/home" element={<HomePage />} />
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
-      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-      <Route path="/reset-password" element={<ResetPasswordPage />} />
-      <Route path="/verify-email" element={<VerifyEmailPage />} />
+      <Route element={<PublicLayout />}>
+        <Route index element={<HomePage />} />
+        <Route path="home" element={<HomePage />} />
+        <Route path="login" element={<LoginPage />} />
+        <Route path="register" element={<RegisterPage />} />
+        <Route path="forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="reset-password" element={<ResetPasswordPage />} />
+        <Route path="verify-email" element={<VerifyEmailPage />} />
+        <Route path="developers" element={<DevelopersPage />} />
+        <Route path="privacy" element={<PrivacyPage />} />
+        <Route path="terms" element={<TermsPage />} />
+        <Route path="faq" element={<FAQPage />} />
+        <Route path="contact" element={<ContactPage />} />
+      </Route>
 
-      {/* Public informational pages */}
-      <Route path="/developers" element={<DevelopersPage />} />
-      <Route path="/privacy" element={<PrivacyPage />} />
-      <Route path="/terms" element={<TermsPage />} />
-      <Route path="/faq" element={<FAQPage />} />
+      <Route path="pay/:slug" element={<CheckoutPage />} />
 
       <Route
         element={
@@ -65,6 +72,7 @@ export default function App() {
         <Route index element={<OverviewPage />} />
         <Route path="payments" element={<PaymentsPage />} />
         <Route path="payments/:id" element={<PaymentPage />} />
+        <Route path="payment-links" element={<PaymentLinksPage />} />
         <Route path="platforms" element={<PlatformsPage />} />
         <Route path="platforms/new" element={<NewPlatformPage />} />
         <Route path="platforms/:id" element={<PlatformPage />} />

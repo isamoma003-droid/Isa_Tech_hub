@@ -44,6 +44,12 @@ Integration flow (high level)
 4. Save the returned `payment.id` with your order/booking so you can poll Hub `GET /v1/payments/:id` if needed.
 5. The Hub will deliver a signed webhook to your configured webhook URL with event types such as `payment.paid` or `payment.failed`. Verify with HMAC and apply the state change in your system.
 
+Hosted payment links
+
+Merchants and IsaPay staff can create hosted links from **Payment links** in the dashboard. A link is assigned to one active platform and can use a fixed KES amount or let the payer choose within a configured range. Reusable links accept multiple payments; single-use links lock while a payment is pending and close after the first confirmed payment.
+
+Share the generated dashboard URL (`<APP_URL>/pay/<link-slug>`). The checkout collects a Kenyan M-Pesa phone number and can also ask for the payer's name, email and order/reference. The Hub sends the STK push and confirms payment with Safaricom like an API-created payment. The resulting payment appears in the dashboard and uses the platform's normal signed webhook. A receipt is emailed through the configured mail provider when an email was collected.
+
 Server-side: create a payment (Node/Express example)
 
 This example uses the SDK (recommended). If you prefer plain fetch/axios, the same HTTP call applies (Authorization: Bearer ISA_HUB_API_KEY).
@@ -149,6 +155,8 @@ Platform server should set at least:
 
 Additionally, keep any platform-specific secrets/DB connection strings for your app as usual.
 
+For the Hub's own account, support and checkout emails, configure `MAIL_PROVIDER=brevo`, `BREVO_API_KEY`, and a verified `MAIL_FROM` address. Configure `SUPPORT_EMAIL` and `SUPPORT_PHONE` for the public contact page. `MAIL_PROVIDER=smtp` with `SMTP_URL` remains supported for existing deployments.
+
 Testing and sandbox
 
 - Use the Hub dashboard to add a platform and request sandbox credentials if available.
@@ -204,7 +212,4 @@ Where this file lives and next steps
 
 - File path: `docs/INTEGRATION.md`.
 
-If you want, I can:
-- Commit this file into the repository (I will now add it to `docs/INTEGRATION.md`).
-- Create a PR instead of committing directly.
-- Expand the guide with language-specific SDK examples (PHP, Python, Go) or a Postman collection.
+For additional integration examples, see the SDK and API documentation or contact ISA Tech support.

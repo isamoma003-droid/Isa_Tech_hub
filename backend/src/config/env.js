@@ -27,6 +27,8 @@ function list(name) {
 }
 
 const isTest = process.env.NODE_ENV === 'test';
+const mailProvider = process.env.MAIL_PROVIDER || 'auto';
+if (!['auto', 'brevo', 'smtp'].includes(mailProvider)) throw new Error('Environment variable MAIL_PROVIDER must be auto, brevo or smtp');
 const publicUrl = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${number('PORT', 5100)}`).replace(/\/$/, '');
 const clientOrigins = list('CLIENT_ORIGIN').length ? list('CLIENT_ORIGIN') : ['http://localhost:5173'];
 
@@ -58,8 +60,12 @@ export const env = {
   // Outgoing email (password resets, email checks, approvals), e.g.
   // smtps://you%40gmail.com:app-password@smtp.gmail.com:465. Without it, nothing is emailed:
   // admins reset passwords from the Accounts page instead.
+  mailProvider,
+  brevoApiKey: process.env.BREVO_API_KEY || '',
   smtpUrl: process.env.SMTP_URL || '',
   mailFrom: process.env.MAIL_FROM || '',
+  supportEmail: process.env.SUPPORT_EMAIL || 'support@isapay.co.ke',
+  supportPhone: process.env.SUPPORT_PHONE || '+254 700 000 000',
   minAmount: number('MIN_AMOUNT', 1),
   maxAmount: number('MAX_AMOUNT', 150_000),
   // Background work: asking Safaricom about payments whose callback never came, and

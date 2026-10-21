@@ -1,12 +1,11 @@
 import { Link } from 'react-router-dom';
-import { Brand } from '../components/Logo.jsx';
 
 export default function TermsPage() {
   return (
     <div className="page container">
       <header className="page-header">
         <div>
-          <Brand subtitle="by ISA Tech" />
+          <h1>Terms of use</h1>
           <p className="subtitle muted">Terms of use for IsaPay / ISA Tech Hub.</p>
         </div>
       </header>

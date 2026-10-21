@@ -6,6 +6,7 @@ import App from './App.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { registerServiceWorker } from './pwa.js';
 import './styles/global.css';
+import './styles/public.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {

@@ -12,34 +12,31 @@ const POINTS = [
 export default function AuthLayout({ title, subtitle, children, onSubmit }) {
   const Card = onSubmit ? 'form' : 'div';
   return (
-    <div className="login">
-      <section className="login-hero" aria-hidden="true">
-        <Brand subtitle={`by ${BRAND.company}`} />
-        <div className="login-pitch">
-          <h2>Take M-Pesa payments on your site or app, the easy way.</h2>
-          <ul>
-            {POINTS.map((point) => (
-              <li key={point}>
-                <CheckCircle2 size={18} /> {point}
-              </li>
-            ))}
-          </ul>
+    <div className="auth-page">
+      <div className="login">
+        <section className="login-hero" aria-hidden="true">
+          <Brand subtitle={`by ${BRAND.company}`} />
+          <div className="login-pitch">
+            <h2>Take M-Pesa payments on your site or app, the easy way.</h2>
+            <ul>
+              {POINTS.map((point) => (
+                <li key={point}>
+                  <CheckCircle2 size={18} /> {point}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <small>© {new Date().getFullYear()} {BRAND.company}</small>
+        </section>
+        <div className="login-panel">
+          <Card className="login-card" onSubmit={onSubmit}>
+            <div>
+              <h1>{title}</h1>
+              {subtitle && <p className="subtitle">{subtitle}</p>}
+            </div>
+            {children}
+          </Card>
         </div>
-        <small>
-          © {new Date().getFullYear()} {BRAND.company}
-        </small>
-      </section>
-      <div className="login-panel">
-        <Card className="login-card" onSubmit={onSubmit}>
-          <div className="login-mobile-brand">
-            <Brand />
-          </div>
-          <div>
-            <h1>{title}</h1>
-            {subtitle && <p className="subtitle">{subtitle}</p>}
-          </div>
-          {children}
-        </Card>
       </div>
     </div>
   );

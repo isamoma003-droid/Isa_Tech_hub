@@ -9,6 +9,7 @@ import { env } from './config/env.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import adminRoutes from './routes/admin.js';
 import authRoutes from './routes/auth.js';
+import checkoutRoutes from './routes/checkout.js';
 import mpesaRoutes from './routes/mpesa.js';
 import v1Routes from './routes/v1.js';
 
@@ -38,6 +39,7 @@ export function createApp() {
   app.use('/api/admin', cors({ origin: env.clientOrigins }));
   app.use('/api/admin/auth', authRoutes);
   app.use('/api/admin', adminRoutes);
+  app.use('/api/checkout', cors({ origin: env.clientOrigins }), checkoutRoutes);
   app.use(['/api', '/v1', '/mpesa'], notFoundHandler);
 
   // Optionally serve the built dashboard from the same server (SERVE_CLIENT=true). Otherwise the

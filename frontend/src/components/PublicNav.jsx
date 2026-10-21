@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, NavLink } from 'react-router-dom';
 import { Brand } from './Logo.jsx';
 import './PublicNav.css';
 
@@ -11,10 +11,11 @@ export default function PublicNav() {
         </Link>
 
         <nav className="nav-links" aria-label="Primary">
-          <Link to="/developers">Developers</Link>
-          <Link to="/faq">FAQ</Link>
-          <Link to="/privacy">Privacy</Link>
-          <a href="https://github.com/isamoma003-droid/Isa_Tech_hub" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <NavLink to="/" end>Home</NavLink>
+          <NavLink to="/developers">Developers</NavLink>
+          <NavLink to="/contact">Contact</NavLink>
+          <NavLink to="/faq">FAQ</NavLink>
+          <NavLink to="/privacy">Privacy</NavLink>
         </nav>
 
         <div className="nav-cta">
