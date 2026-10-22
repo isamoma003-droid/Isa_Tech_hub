@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { describe, test } from 'node:test';
 import jwt from 'jsonwebtoken';
+import { createApp } from '../src/app.js';
 import { Payment } from '../src/models/Payment.js';
 import { PaymentLink } from '../src/models/PaymentLink.js';
 import { Till, envSuffix } from '../src/models/Till.js';
@@ -13,6 +14,23 @@ import { decryptSecret, encryptSecret, signWebhook, verifyWebhookSignature } fro
 import { assertPublicDestination, isPrivateAddress, isPublicHttpsUrl } from '../src/utils/network.js';
 import { maskPhone, normalizePhone } from '../src/utils/phone.js';
 import { darajaTimestamp, kenyaDay, monthRange, previousMonth, startOfKenyaDay } from '../src/utils/time.js';
+
+describe('health endpoint', () => {
+  test('allows the configured dashboard origin to read health status', async () => {
+    const server = createApp().listen(0);
+    await new Promise((resolve) => server.once('listening', resolve));
+    try {
+      const response = await fetch(`http://127.0.0.1:${server.address().port}/api/health`, {
+        headers: { Origin: 'http://localhost:5173' },
+      });
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('access-control-allow-origin'), 'http://localhost:5173');
+      assert.deepEqual(await response.json(), { ok: true });
+    } finally {
+      await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    }
+  });
+});
 
 describe('M-Pesa confirmation codes', () => {
   test('exposes Safaricom receipts to platforms and the dashboard', () => {

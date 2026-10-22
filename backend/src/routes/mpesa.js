@@ -19,17 +19,20 @@ router.post('/callback/:tillId/:secret', async (req, res) => {
   const till = await loadTill(tillId);
   if (!till || !safeEqual(till.callbackSecret, secret)) throw notFound();
 
-  // Acknowledge first: Daraja gives the endpoint a few seconds and retries anything slower.
-  // Even a body we can't use is acknowledged, since a redelivery would fail the same way.
-  res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
-
   const result = parseCallback(req.body);
   if (!result) {
     console.warn(`Unreadable M-Pesa callback on till ${till.id}: ${JSON.stringify(req.body).slice(0, 500)}`);
+    res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
     return;
   }
-  const job = handleCallback(till, result)
-    .catch((err) => console.error(`M-Pesa callback ${result.checkoutRequestId} failed (the sweep will retry):`, err))
+  // Persist the callback before acknowledging, then do the slower Safaricom status check.
+  const job = handleCallback(till, result, () => {
+    if (!res.headersSent) res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
+  })
+    .catch((err) => {
+      console.error(`M-Pesa callback ${result.checkoutRequestId} failed:`, err);
+      if (!res.headersSent) res.status(503).json({ ResultCode: 1, ResultDesc: 'Temporary processing failure' });
+    })
     .finally(() => inflight.delete(job));
   inflight.add(job);
 });

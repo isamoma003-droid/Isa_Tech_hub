@@ -272,9 +272,10 @@ export async function markFailed(payment, { resultCode, resultDesc, source, note
  * directly before the payment counts as paid. If that check can't be made right now, the
  * callback's receipt and amount are kept and the background sweep finishes the job.
  */
-export async function handleCallback(till, result) {
+export async function handleCallback(till, result, onReceived = () => {}) {
   const payment = await Payment.findOne({ checkoutRequestId: result.checkoutRequestId, till: till._id });
   if (!payment) {
+    onReceived();
     console.warn(`M-Pesa callback for unknown request ${result.checkoutRequestId} on till ${till.id}`);
     return { outcome: 'unknown_request' };
   }
@@ -291,6 +292,7 @@ export async function handleCallback(till, result) {
       }),
     },
   );
+  onReceived();
 
   if (result.resultCode !== 0) {
     return markFailed(payment, { resultCode: result.resultCode, resultDesc: result.resultDesc, source: 'callback' });

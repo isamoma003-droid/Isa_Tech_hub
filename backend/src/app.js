@@ -30,7 +30,7 @@ export function createApp() {
   app.use(express.json({ limit: '100kb' }));
   if (env.nodeEnv !== 'test') app.use(morgan(env.nodeEnv === 'production' ? 'combined' : 'dev'));
 
-  app.get(['/health', '/api/health'], (_req, res) => res.json({ ok: true }));
+  app.get(['/health', '/api/health'], cors({ origin: env.clientOrigins }), (_req, res) => res.json({ ok: true }));
   // Safaricom → Hub. No auth, no rate limit: a throttled callback looks like a payment that never happened.
   app.use('/mpesa', mpesaRoutes);
   // Platforms → Hub (server-to-server, API key).
