@@ -19,6 +19,7 @@ import { HttpError } from '../utils/httpError.js';
 import { DarajaError, stkPush, stkQuery } from './daraja.js';
 import { audit } from './audit.js';
 import { sendMail } from './mailer.js';
+import { emailTemplate } from './emailTemplate.js';
 import { enqueuePaymentEvent } from './webhooks.js';
 
 const TILL_SECRETS = '+consumerKey +consumerSecret +passkey +callbackSecret';
@@ -163,6 +164,18 @@ export async function markPaid(payment, { receipt, paidAmount, source, note }) {
           to: updated.customerEmail,
           subject: `Payment received by ${updated.description || 'IsaPay'}`,
           text: `Hello${updated.customerName ? ` ${updated.customerName}` : ''},\n\nYour payment of KES ${updated.paidAmount ?? updated.amount} has been received.${details}\nReference: ${updated.reference}\n`,
+          html: emailTemplate({
+            preheader: `Your payment of KES ${updated.paidAmount ?? updated.amount} was received.`,
+            title: 'Payment received',
+            greeting: `Hello${updated.customerName ? ` ${updated.customerName}` : ''},`,
+            paragraphs: ['Your M-Pesa payment has been confirmed. Thank you.'],
+            details: [
+              { label: 'Amount received', value: `KES ${updated.paidAmount ?? updated.amount}` },
+              { label: 'Reference', value: updated.reference },
+              ...(updated.receipt ? [{ label: 'M-Pesa receipt', value: updated.receipt }] : []),
+            ],
+            closing: `Payment processed securely by IsaPay for ${updated.description || 'the merchant'}.`,
+          }),
         });
       }
     }

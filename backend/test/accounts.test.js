@@ -376,6 +376,8 @@ describe('Accounts', { skip: !uri && 'set MONGODB_URI_TEST to run the API tests'
     assert.equal(mail.replyTo, 'amina@duka.test');
     assert.match(mail.subject, /Checkout help/);
     assert.match(mail.text, /Amina Hassan/);
+    assert.match(mail.html, /New support request/);
+    assert.match(mail.html, /A customer needs help completing an M-Pesa checkout/);
   });
 
   test('a hosted payment link creates one-time STK requests and closes after successful payment', async () => {
@@ -418,6 +420,8 @@ describe('Accounts', { skip: !uri && 'set MONGODB_URI_TEST to run the API tests'
     assert.equal((await PaymentLink.findById(link.id)).status, 'paid');
     assert.equal((await request('GET', `/api/checkout/${link.slug}`)).status, 404);
     assert.match(mailTo('payer@duka.test')[0].subject, /Payment received/);
+    assert.match(mailTo('payer@duka.test')[0].html, /Payment received/);
+    assert.match(mailTo('payer@duka.test')[0].html, /LINK123456/);
   });
 
   test('Google: a new person gets a merchant account, then signs straight in', async () => {

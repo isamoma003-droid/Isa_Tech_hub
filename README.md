@@ -96,7 +96,7 @@ Anyone can open a merchant account from the sign-in page (**Create a merchant ac
 
 People who only use Google can add a password under Your account; IsaPay asks for it again before any till change.
 
-**Email.** With Brevo configured (`MAIL_PROVIDER=brevo`, `BREVO_API_KEY`, and a verified `MAIL_FROM` sender), IsaPay sends:
+**Email.** With Brevo configured (`MAIL_PROVIDER=brevo`, `BREVO_API_KEY`, and a verified `MAIL_FROM` sender), IsaPay sends branded, mobile-friendly HTML emails with a plain-text fallback:
 - password-reset links (one-time, valid for an hour, and they sign out every other session);
 - email-confirmation links;
 - admins when a business signs up;
@@ -104,6 +104,8 @@ People who only use Google can add a password under Your account; IsaPay asks fo
 - merchants whenever their payout details change.
 - support-form submissions to `SUPPORT_EMAIL`, with replies directed to the sender;
 - checkout receipts to customers when the payment link collects an email address and M-Pesa confirms payment.
+
+Email templates use IsaPay branding, inline styles for email-client compatibility, clear action buttons, and escaped customer-provided content. Account security messages, support requests, payout alerts, onboarding decisions, and payment receipts share the same layout.
 
 Legacy SMTP remains available with `MAIL_PROVIDER=smtp` and `SMTP_URL`. Set `SUPPORT_PHONE` for the contact page; replace the documented placeholder address/phone with monitored business contacts. Set `APP_URL` if email links should point somewhere other than `CLIENT_ORIGIN`. Without an email provider, admins use **New temporary password** and **Mark email confirmed** on the account's page, and the support page shows its direct contact details.
 

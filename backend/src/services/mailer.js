@@ -23,14 +23,14 @@ function sender() {
  * A mail problem must not undo the account or payment action that triggered it.
  * @returns {Promise<boolean>} whether it was handed to the mail server
  */
-export async function sendMail({ to, subject, text, replyTo }) {
+export async function sendMail({ to, subject, text, html, replyTo }) {
   if (!mailEnabled()) {
     console.log(`Email to ${to} not sent ("${subject}"): configure BREVO_API_KEY or SMTP_URL`);
     return false;
   }
   try {
     if (testTransport) {
-      await testTransport.sendMail({ from: sender(), to, subject, text, ...(replyTo ? { replyTo } : {}) });
+      await testTransport.sendMail({ from: sender(), to, subject, text, ...(html ? { html } : {}), ...(replyTo ? { replyTo } : {}) });
     } else if (provider() === 'brevo') {
       const response = await fetch('https://api.brevo.com/v3/smtp/email', {
         method: 'POST',
@@ -40,18 +40,30 @@ export async function sendMail({ to, subject, text, replyTo }) {
           to: [{ email: to }],
           subject,
           textContent: text,
+          ...(html ? { htmlContent: html } : {}),
           ...(replyTo ? { replyTo: { email: replyTo } } : {}),
         }),
         signal: AbortSignal.timeout(15_000),
       });
       if (!response.ok) {
-        console.error(`Could not email ${to} ("${subject}"): Brevo returned HTTP ${response.status}`);
+        const responseText = await response.text();
+        let detail = '';
+        try {
+          const body = JSON.parse(responseText);
+          const code = typeof body.code === 'string' ? body.code : '';
+          const message = typeof body.message === 'string' ? body.message : '';
+          detail = [code, message].filter(Boolean).join(': ');
+        } catch {
+          // Brevo may return a non-JSON error page; the HTTP status is still useful.
+        }
+        const safeDetail = detail.replace(/[\r\n\t]+/g, ' ').slice(0, 300);
+        console.error(`Brevo rejected a transactional email (HTTP ${response.status})${safeDetail ? `: ${safeDetail}` : ''}`);
         return false;
       }
     } else {
       const from = env.mailFrom || `${sender().name} <${sender().email}>`;
       const via = (transport ??= nodemailer.createTransport(env.smtpUrl));
-      await via.sendMail({ from, to, subject, text, ...(replyTo ? { replyTo } : {}) });
+      await via.sendMail({ from, to, subject, text, ...(html ? { html } : {}), ...(replyTo ? { replyTo } : {}) });
     }
     return true;
   } catch (err) {

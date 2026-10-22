@@ -10,6 +10,7 @@ import { AdminUser } from '../models/AdminUser.js';
 import { consumeToken, notifyAdminsOfSignup, sendEmailCheck, sendPasswordReset } from '../services/accounts.js';
 import { audit } from '../services/audit.js';
 import { googleEnabled, verifyGoogleIdToken } from '../services/google.js';
+import { emailTemplate } from '../services/emailTemplate.js';
 import { mailEnabled, sendMail } from '../services/mailer.js';
 import { HttpError, badRequest, conflict, forbidden, unauthorized } from '../utils/httpError.js';
 import { normalizePhone } from '../utils/phone.js';
@@ -182,6 +183,18 @@ router.post('/contact', contactLimiter, validate(contactSchema), async (req, res
     replyTo: senderEmail,
     subject: `IsaPay support: ${subject}`,
     text: `Support request from ${name} <${senderEmail}>\n\n${message}\n`,
+    html: emailTemplate({
+      preheader: `Support request from ${name}: ${subject}`,
+      title: 'New support request',
+      paragraphs: ['A customer sent a message through the IsaPay contact form.'],
+      details: [
+        { label: 'From', value: name },
+        { label: 'Email', value: senderEmail },
+        { label: 'Subject', value: subject },
+      ],
+      paragraphsAfterDetails: [message],
+      closing: 'Reply to this email to respond directly to the customer.',
+    }),
   });
   if (!sent) throw new HttpError(502, 'We could not send your message. Please try again.');
   res.status(202).json({ ok: true });
@@ -281,6 +294,16 @@ router.patch('/me', requireAdmin, validate(profileSchema), async (req, res) => {
       to: user.email,
       subject: 'IsaPay: your payout details changed',
       text: `Hello ${user.name},\n\nThe details IsaPay uses to send you your money were just changed in the dashboard. If this wasn't you, change your password and contact IsaPay at once.\n\n${env.appUrl}/account\n`,
+      html: emailTemplate({
+        preheader: 'Your IsaPay payout details were changed.',
+        title: 'Payout details changed',
+        greeting: `Hello ${user.name},`,
+        paragraphs: [
+          'The details IsaPay uses to send you payouts were just changed in the dashboard.',
+          "If you didn't make this change, secure your account and contact IsaPay support immediately.",
+        ],
+        action: { label: 'Review account security', url: `${env.appUrl}/account` },
+      }),
     });
   }
   res.json({ admin: after });
