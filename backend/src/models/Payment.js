@@ -97,7 +97,7 @@ paymentSchema.virtual('message').get(function message() {
 });
 
 paymentSchema.virtual('mpesaReceipt').get(function mpesaReceipt() {
-  return this.receipt || (this.status === 'paid' && this.callback?.resultCode === 0 ? this.callback.receipt || null : null);
+  return this.receipt || (['paid', 'disputed'].includes(this.status) && this.callback?.resultCode === 0 ? this.callback.receipt || null : null);
 });
 
 // What platforms see, in API responses and webhooks.

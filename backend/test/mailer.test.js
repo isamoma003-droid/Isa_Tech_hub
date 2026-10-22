@@ -66,8 +66,10 @@ test('Brevo rejection logs its safe diagnostic without exposing the API key', as
     console.error = (...args) => { logged = args.join(' '); };
 
     assert.equal(await sendMail({ to: 'support@example.test', subject: 'Help', text: 'Message' }), false);
-    assert.match(logged, /HTTP 400/);
-    assert.match(logged, /invalid_parameter: Sender email is not verified/);
+    const logEntry = JSON.parse(logged);
+    assert.equal(logEntry.event, 'email.provider_rejected');
+    assert.equal(logEntry.httpStatus, 400);
+    assert.equal(logEntry.diagnostic, 'invalid_parameter: Sender email is not verified');
     assert.doesNotMatch(logged, /secret-test-key|support@example\.test/);
   } finally {
     globalThis.fetch = original.fetch;

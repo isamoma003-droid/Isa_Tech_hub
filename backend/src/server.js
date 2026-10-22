@@ -3,7 +3,7 @@ import { env } from './config/env.js';
 import { createApp } from './app.js';
 import { bootstrapAdmin, syncTillsFromEnv } from './services/bootstrap.js';
 import { startKeepAlive } from './services/keepAlive.js';
-import { mailEnabled } from './services/mailer.js';
+import { mailStatus } from './services/mailer.js';
 import { startWorkers } from './services/workers.js';
 
 async function main() {
@@ -17,7 +17,15 @@ async function main() {
     console.log(`Safaricom callbacks go to ${env.publicUrl}/mpesa/callback/<till>/<secret>`);
     if (env.keepAlive) startKeepAlive();
     else console.log('Keep-alive is off (set KEEP_ALIVE=true to enable it)');
-    if (!mailEnabled()) console.warn('Payment receipt emails are disabled: configure BREVO_API_KEY or SMTP_URL');
+    const email = mailStatus();
+    console.log(JSON.stringify({ service: 'isapay', event: 'email.configuration', ...email }));
+    if (!email.enabled) {
+      console.warn(JSON.stringify({
+        service: 'isapay',
+        event: 'payment.receipt_emails_disabled',
+        reason: 'configure_BREVO_API_KEY_or_SMTP_URL',
+      }));
+    }
   });
   if (env.workers) startWorkers();
   else console.log('Background work is off (WORKERS=false): pending payments and webhooks will wait');

@@ -21,7 +21,13 @@ router.post('/callback/:tillId/:secret', async (req, res) => {
 
   const result = parseCallback(req.body);
   if (!result) {
-    console.warn(`Unreadable M-Pesa callback on till ${till.id}: ${JSON.stringify(req.body).slice(0, 500)}`);
+    console.warn(JSON.stringify({
+      service: 'isapay',
+      event: 'payment.callback_unreadable',
+      tillId: till.id,
+      bodyType: typeof req.body,
+      bodyKeys: req.body && typeof req.body === 'object' ? Object.keys(req.body).slice(0, 20) : [],
+    }));
     res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
     return;
   }

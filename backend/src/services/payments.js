@@ -33,6 +33,7 @@ export const GIVE_UP_MS = 10 * 60_000;
 const ORPHAN_MS = 2 * 60_000;
 const MAX_EVENTS = 50;
 const RECEIPT_EMAIL_RETRY_MS = 30_000;
+const logPayment = (level, event, details) => console[level](JSON.stringify({ service: 'isapay', event, ...details }));
 
 const pushEvent = (type, source, extra = {}) => ({
   $push: { events: { $each: [{ at: new Date(), type, source, ...extra }], $slice: -MAX_EVENTS } },
@@ -148,6 +149,7 @@ export async function markPaid(payment, { receipt, paidAmount, source, note }) {
     updated = await apply(set, note);
   } catch (err) {
     if (!isDuplicateKey(err)) throw err;
+    logPayment('error', 'payment.receipt_conflict', { paymentId: payment.id, source, reason: 'duplicate_receipt' });
     // The receipt is already on another payment: never count one M-Pesa transaction twice.
     delete set.receipt;
     delete set.receiptEmailQueuedAt;
@@ -155,6 +157,11 @@ export async function markPaid(payment, { receipt, paidAmount, source, note }) {
   }
 
   if (updated) {
+    if (receipt && updated.receipt === receipt) {
+      logPayment('info', 'payment.receipt_saved', { paymentId: updated.id, source, receiptPresent: true, status: updated.status });
+    } else if (receipt) {
+      logPayment('error', 'payment.receipt_not_saved', { paymentId: updated.id, source, reason: 'duplicate_receipt' });
+    }
     if (updated.status === 'paid' && updated.metadata?.invoiceId) await settleInvoice(updated);
     if (updated.status === 'paid' && updated.paymentLink) {
       const update = { $inc: { successfulPayments: 1 } };
@@ -172,6 +179,7 @@ export async function markPaid(payment, { receipt, paidAmount, source, note }) {
   // Already settled. A status check can confirm a payment before its callback brings the receipt.
   if (receipt) {
     let receiptAdded = false;
+    let receiptConflict = false;
     try {
       const result = await Payment.updateOne(
         { _id: payment._id, status: 'paid', receipt: { $exists: false } },
@@ -185,12 +193,26 @@ export async function markPaid(payment, { receipt, paidAmount, source, note }) {
       receiptAdded = result.modifiedCount > 0;
     } catch (err) {
       if (!isDuplicateKey(err)) throw err;
+      receiptConflict = true;
     }
     if (receiptAdded) {
       const updated = await Payment.findById(payment._id);
       if (updated) {
+        logPayment('info', 'payment.receipt_saved', { paymentId: updated.id, source, receiptPresent: true, status: updated.status, lateCallback: true });
         await enqueuePaymentEvent(updated, 'payment.paid');
         if (updated.paymentLink && updated.customerEmail) await deliverReceiptEmail(updated._id);
+      }
+    } else {
+      const current = await Payment.findById(payment._id);
+      if (current?.receipt === receipt) {
+        logPayment('info', 'payment.receipt_already_saved', { paymentId: payment.id, source, status: current.status });
+      } else {
+        logPayment(receiptConflict ? 'error' : 'warn', 'payment.receipt_not_saved', {
+          paymentId: payment.id,
+          source,
+          status: current?.status,
+          reason: receiptConflict ? 'duplicate_receipt' : 'payment_not_paid',
+        });
       }
     }
   }
@@ -198,7 +220,10 @@ export async function markPaid(payment, { receipt, paidAmount, source, note }) {
 }
 
 async function deliverReceiptEmail(paymentId) {
-  if (!mailEnabled()) return false;
+  if (!mailEnabled()) {
+    logPayment('error', 'payment.receipt_email_disabled', { paymentId: String(paymentId), reason: 'configure_BREVO_API_KEY_or_SMTP_URL' });
+    return false;
+  }
   const now = new Date();
   const eligible = {
     _id: paymentId,
@@ -218,6 +243,11 @@ async function deliverReceiptEmail(paymentId) {
   if (!payment) return false;
 
   const receipt = payment.receipt;
+  logPayment('info', 'payment.receipt_email_attempt', {
+    paymentId: payment.id,
+    attempt: payment.receiptEmailAttempts,
+    receiptPresent: true,
+  });
   const sent = await sendMail({
     to: payment.customerEmail,
     subject: `Payment received by ${payment.description || 'IsaPay'}`,
@@ -240,6 +270,7 @@ async function deliverReceiptEmail(paymentId) {
       { _id: payment._id, receiptEmailSentAt: { $exists: false } },
       { $set: { receiptEmailSentAt: new Date() }, $unset: { receiptEmailNextAttemptAt: 1 } },
     );
+    logPayment('info', 'payment.receipt_email_sent', { paymentId: payment.id, attempt: payment.receiptEmailAttempts });
     return true;
   }
   const retryMs = Math.min(15 * 60_000, RECEIPT_EMAIL_RETRY_MS * 2 ** Math.min(payment.receiptEmailAttempts - 1, 5));
@@ -247,6 +278,11 @@ async function deliverReceiptEmail(paymentId) {
     { _id: payment._id, receiptEmailSentAt: { $exists: false } },
     { $set: { receiptEmailNextAttemptAt: new Date(Date.now() + retryMs) } },
   );
+  logPayment('error', 'payment.receipt_email_failed', {
+    paymentId: payment.id,
+    attempt: payment.receiptEmailAttempts,
+    retryAfterMs: retryMs,
+  });
   return false;
 }
 
@@ -325,7 +361,11 @@ export async function handleCallback(till, result, onReceived = () => {}) {
   const payment = await Payment.findOne({ checkoutRequestId: result.checkoutRequestId, till: till._id });
   if (!payment) {
     onReceived();
-    console.warn(`M-Pesa callback for unknown request ${result.checkoutRequestId} on till ${till.id}`);
+    logPayment('warn', 'payment.callback_unknown_request', {
+      checkoutRequestId: result.checkoutRequestId,
+      tillId: till.id,
+      receiptPresent: Boolean(result.receipt),
+    });
     return { outcome: 'unknown_request' };
   }
 
@@ -342,10 +382,32 @@ export async function handleCallback(till, result, onReceived = () => {}) {
     },
     { returnDocument: 'after' },
   );
+  if (!receivedPayment) {
+    logPayment('error', 'payment.callback_not_persisted', {
+      paymentId: payment.id,
+      checkoutRequestId: result.checkoutRequestId,
+      reason: 'payment_disappeared_before_callback_update',
+    });
+    throw new Error(`Payment ${payment.id} disappeared while saving Safaricom callback`);
+  }
+  logPayment('info', 'payment.callback_persisted', {
+    paymentId: receivedPayment.id,
+    checkoutRequestId: result.checkoutRequestId,
+    resultCode: result.resultCode,
+    receiptPresent: Boolean(result.receipt),
+    statusBeforeConfirmation: receivedPayment.status,
+  });
   onReceived();
 
   if (result.resultCode !== 0) {
     return markFailed(payment, { resultCode: result.resultCode, resultDesc: result.resultDesc, source: 'callback' });
+  }
+  if (!result.receipt) {
+    logPayment('warn', 'payment.callback_missing_receipt', {
+      paymentId: payment.id,
+      checkoutRequestId: result.checkoutRequestId,
+      reason: 'successful_callback_has_no_MpesaReceiptNumber',
+    });
   }
   // A status query may have settled this payment before Safaricom's callback arrived. Its
   // successful status is already verified, so attach the late callback receipt without another
@@ -362,11 +424,23 @@ export async function handleCallback(till, result, onReceived = () => {}) {
   try {
     check = await stkQuery(till, result.checkoutRequestId);
   } catch (err) {
-    console.warn(`Could not confirm payment ${payment.id} with Safaricom (${err.message}); the sweep will retry`);
+    logPayment('warn', 'payment.callback_verification_failed', {
+      paymentId: payment.id,
+      checkoutRequestId: result.checkoutRequestId,
+      errorType: err?.name || 'Error',
+      retry: 'background_sweep',
+    });
     return { outcome: 'unconfirmed' };
   }
   if (check.state === 'success') {
-    return markPaid(payment, { receipt: result.receipt, paidAmount: result.amount, source: 'callback' });
+    const settled = await markPaid(payment, { receipt: result.receipt, paidAmount: result.amount, source: 'callback' });
+    logPayment('info', 'payment.callback_confirmed', {
+      paymentId: payment.id,
+      checkoutRequestId: result.checkoutRequestId,
+      status: settled.payment?.status,
+      receiptPresent: Boolean(settled.payment?.mpesaReceipt),
+    });
+    return settled;
   }
   if (check.state === 'failed') {
     return markFailed(payment, {
@@ -376,6 +450,12 @@ export async function handleCallback(till, result, onReceived = () => {}) {
       note: `The callback said paid, but Safaricom says: ${check.resultDesc}`,
     });
   }
+  logPayment('warn', 'payment.callback_unconfirmed', {
+    paymentId: payment.id,
+    checkoutRequestId: result.checkoutRequestId,
+    safaricomState: check.state,
+    resultCode: check.resultCode,
+  });
   return { outcome: 'unconfirmed' };
 }
 
