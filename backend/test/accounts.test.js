@@ -395,15 +395,20 @@ describe('Accounts', { skip: !uri && 'set MONGODB_URI_TEST to run the API tests'
     assert.equal(link.amount, 250);
     assert.match(link.url, new RegExp(`/pay/${link.slug}$`));
 
+    const edited = await api('PATCH', `/payment-links/${link.id}`, adminToken, { title: 'Ticket order updated', amount: 300 });
+    assert.equal(edited.status, 200);
+    assert.equal(edited.body.paymentLink.title, 'Ticket order updated');
+    assert.equal(edited.body.paymentLink.amount, 300);
+
     const checkout = await request('GET', `/api/checkout/${link.slug}`);
     assert.equal(checkout.status, 200);
-    assert.equal(checkout.body.paymentLink.title, 'Ticket order');
+    assert.equal(checkout.body.paymentLink.title, 'Ticket order updated');
     assert.equal(checkout.body.paymentLink.collectReference, undefined);
 
     const requestId = crypto.randomUUID();
     const body = {
       phone: nextPhone(),
-      amount: 250,
+      amount: 300,
       name: 'Amina Hassan',
       email: 'payer@duka.test',
       requestId,
@@ -416,12 +421,19 @@ describe('Accounts', { skip: !uri && 'set MONGODB_URI_TEST to run the API tests'
 
     const payment = await Payment.findById(started.body.payment.id);
     assert.match(payment.reference, /^link-/);
-    await markPaid(payment, { paidAmount: 250, source: 'test' });
-    await markPaid(payment, { receipt: 'LINK123456', paidAmount: 250, source: 'callback' });
+    await markPaid(payment, { receipt: 'LINK123456', paidAmount: 300, source: 'callback' });
     const status = await request('GET', `/api/checkout/${link.slug}/payments/${payment.id}`);
     assert.equal(status.body.payment.mpesaReceipt, 'LINK123456');
     assert.equal((await PaymentLink.findById(link.id)).status, 'paid');
     assert.equal((await request('GET', `/api/checkout/${link.slug}`)).status, 404);
+    const renamedPaidLink = await api('PATCH', `/payment-links/${link.id}`, adminToken, { title: 'Paid ticket link renamed' });
+    assert.equal(renamedPaidLink.status, 200);
+    assert.equal(renamedPaidLink.body.paymentLink.title, 'Paid ticket link renamed');
+    const lockedPaidLink = await api('PATCH', `/payment-links/${link.id}`, adminToken, { amount: 400 });
+    assert.equal(lockedPaidLink.status, 409);
+    assert.equal((await api('DELETE', `/payment-links/${link.id}`, adminToken)).status, 204);
+    const remainingLinks = await api('GET', '/payment-links', adminToken);
+    assert.ok(!remainingLinks.body.paymentLinks.some((item) => item.id === link.id));
     assert.match(mailTo('payer@duka.test')[0].subject, /Payment received/);
     assert.match(mailTo('payer@duka.test')[0].html, /Payment received/);
     assert.ok(mailTo('payer@duka.test').some((mail) => mail.html.includes('M-Pesa confirmation code') && mail.html.includes('LINK123456')));

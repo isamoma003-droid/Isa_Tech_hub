@@ -16,6 +16,7 @@ const paymentLinkSchema = new Schema(
     collectName: { type: Boolean, default: true },
     collectEmail: { type: Boolean, default: true },
     status: { type: String, enum: ['active', 'disabled', 'paid'], default: 'active', index: true },
+    deletedAt: Date,
     checkoutLock: { type: String, select: false },
     successfulPayments: { type: Number, default: 0 },
     createdBy: { type: Schema.Types.ObjectId, ref: 'AdminUser', required: true },

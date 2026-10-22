@@ -50,6 +50,8 @@ Merchants and IsaPay staff can create hosted links from **Payment links** in the
 
 Share the generated dashboard URL (`<APP_URL>/pay/<link-slug>`). The checkout collects a Kenyan M-Pesa phone number and can also ask for the payer's name and email. Customers do not enter an M-Pesa reference: after Safaricom confirms a successful payment, IsaPay records and displays the Safaricom-issued confirmation code (`MpesaReceiptNumber`). The code appears in the dashboard, CSV export, customer receipt email, platform API responses and signed webhooks. The existing `receipt` field remains available for compatibility; `mpesaReceipt` is its explicit alias. The payment's `reference` remains an IsaPay-generated link identifier for link checkouts and is not the M-Pesa code.
 
+In the dashboard, the Reference column for a confirmed payment-link transaction displays the Safaricom code instead of the generated link identifier. You can edit payment links from **Payment links**; deleting one disables its checkout URL and hides it from the link list while retaining its payment history.
+
 Server-side: create a payment (Node/Express example)
 
 This example uses the SDK (recommended). If you prefer plain fetch/axios, the same HTTP call applies (Authorization: Bearer ISA_HUB_API_KEY).

@@ -294,21 +294,40 @@ router.post('/payments/:id/resend-webhook', canChange, async (req, res) => {
 // --- Hosted payment links --------------------------------------------------------------------
 
 const linkAmount = z.coerce.number().int().min(env.minAmount).max(env.maxAmount);
+const paymentLinkFields = {
+  title: z.string().trim().min(2, 'Enter a link name').max(100),
+  description: z.string().trim().max(500).optional(),
+  amountType: z.enum(['fixed', 'customer']),
+  amount: linkAmount.optional(),
+  minAmount: linkAmount.optional(),
+  maxAmount: linkAmount.optional(),
+  usage: z.enum(['reusable', 'single-use']).default('reusable'),
+  collectName: z.boolean().default(true),
+  collectEmail: z.boolean().default(true),
+};
+const validateLinkAmount = (value, ctx) => {
+  if (value.amountType === 'fixed' && value.amount === undefined) {
+    ctx.addIssue({ code: 'custom', path: ['amount'], message: 'Enter the fixed amount' });
+  }
+  if (value.amountType === 'customer' && (value.minAmount ?? env.minAmount) > (value.maxAmount ?? env.maxAmount)) {
+    ctx.addIssue({ code: 'custom', path: ['maxAmount'], message: 'Maximum amount must be at least the minimum' });
+  }
+};
 const createPaymentLinkSchema = z
   .object({
     platform: z.string().regex(/^[a-f0-9]{24}$/i, 'Choose a platform'),
-    title: z.string().trim().min(2, 'Enter a link name').max(100),
-    description: z.string().trim().max(500).optional(),
-    amountType: z.enum(['fixed', 'customer']),
-    amount: linkAmount.optional(),
-    minAmount: linkAmount.optional(),
-    maxAmount: linkAmount.optional(),
-    usage: z.enum(['reusable', 'single-use']).default('reusable'),
-    collectName: z.boolean().default(true),
-    collectEmail: z.boolean().default(true),
+    ...paymentLinkFields,
   })
+  .superRefine(validateLinkAmount);
+const updatePaymentLinkSchema = z
+  .object({
+    ...Object.fromEntries(Object.entries(paymentLinkFields).map(([key, value]) => [key, value.optional()])),
+    active: z.boolean().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, 'No payment link changes provided')
+  .refine((value) => value.active === undefined || Object.keys(value).length === 1, 'Enable or disable the link separately from editing it')
   .superRefine((value, ctx) => {
-    if (value.amountType === 'fixed' && value.amount === undefined) {
+    if (value.amountType === 'fixed' && value.amount === undefined && ('amountType' in value || 'amount' in value)) {
       ctx.addIssue({ code: 'custom', path: ['amount'], message: 'Enter the fixed amount' });
     }
     if (value.amountType === 'customer' && (value.minAmount ?? env.minAmount) > (value.maxAmount ?? env.maxAmount)) {
@@ -323,7 +342,7 @@ const paymentLinkView = (link) => ({
 });
 
 router.get('/payment-links', async (req, res) => {
-  const filter = req.merchant ? { platform: { $in: req.ownPlatforms } } : {};
+  const filter = { deletedAt: { $exists: false }, ...(req.merchant ? { platform: { $in: req.ownPlatforms } } : {}) };
   const links = await PaymentLink.find(filter).sort({ createdAt: -1 }).populate('platform', 'name slug');
   res.json({ paymentLinks: links.map(paymentLinkView) });
 });
@@ -352,18 +371,72 @@ router.post('/payment-links', canChange, validate(createPaymentLinkSchema), asyn
   res.status(201).json({ paymentLink: paymentLinkView(link) });
 });
 
-router.patch('/payment-links/:id', canChange, validate(z.object({ active: z.boolean() })), async (req, res) => {
-  const filter = { _id: objectId(req.params.id, 'Payment link not found'), ...(req.merchant ? { platform: { $in: req.ownPlatforms } } : {}) };
-  const link = await PaymentLink.findOne(filter).populate('platform', 'name slug');
+router.patch('/payment-links/:id', canChange, validate(updatePaymentLinkSchema), async (req, res) => {
+  const filter = { _id: objectId(req.params.id, 'Payment link not found'), deletedAt: { $exists: false }, ...(req.merchant ? { platform: { $in: req.ownPlatforms } } : {}) };
+  const link = await PaymentLink.findOne(filter).select('+checkoutLock').populate('platform', 'name slug');
   if (!link) throw notFound('Payment link not found');
-  if (link.status === 'paid') throw conflict('A single-use link that has been paid cannot be reactivated');
-  const status = req.valid.body.active ? 'active' : 'disabled';
-  if (link.status !== status) {
-    link.status = status;
+  const { active, ...updates } = req.valid.body;
+  if (active !== undefined) {
+    if (link.status === 'paid') throw conflict('A single-use link that has been paid cannot be reactivated');
+    const status = active ? 'active' : 'disabled';
+    if (link.status !== status) {
+      link.status = status;
+      await link.save();
+      await audit(req, `payment_link.${status === 'active' ? 'enabled' : 'disabled'}`, { type: 'payment-link', id: link.id, label: link.title });
+    }
+  } else {
+    const restrictedFields = ['amountType', 'amount', 'minAmount', 'maxAmount', 'usage', 'collectName', 'collectEmail'];
+    const changesConfiguration = restrictedFields.some((key) => key in updates);
+    if (link.status === 'paid' && changesConfiguration) throw conflict('Only the name and description can be edited after a single-use link has been paid');
+    if (link.checkoutLock && changesConfiguration) throw conflict('This link has a payment in progress; try editing it again after the payment finishes');
+
+    const current = {
+      platform: String(link.platform._id),
+      title: link.title,
+      description: link.description || '',
+      amountType: link.amountType,
+      amount: link.amount,
+      minAmount: link.minAmount,
+      maxAmount: link.maxAmount,
+      usage: link.usage,
+      collectName: link.collectName,
+      collectEmail: link.collectEmail,
+    };
+    const next = createPaymentLinkSchema.parse({ ...current, ...updates });
+    const before = link.toPublic();
+    link.set({
+      title: next.title,
+      description: next.description,
+      amountType: next.amountType,
+      amount: next.amountType === 'fixed' ? next.amount : undefined,
+      minAmount: next.amountType === 'customer' ? next.minAmount ?? env.minAmount : undefined,
+      maxAmount: next.amountType === 'customer' ? next.maxAmount ?? env.maxAmount : undefined,
+      usage: next.usage,
+      collectName: next.collectName,
+      collectEmail: next.collectEmail,
+    });
     await link.save();
-    await audit(req, `payment_link.${status === 'active' ? 'enabled' : 'disabled'}`, { type: 'payment-link', id: link.id, label: link.title });
+    const changes = Object.fromEntries(
+      Object.keys(updates)
+        .filter((key) => JSON.stringify(before[key] ?? '') !== JSON.stringify(next[key] ?? ''))
+        .map((key) => [key, { from: before[key] ?? '', to: next[key] ?? '' }]),
+    );
+    if (Object.keys(changes).length) {
+      await audit(req, 'payment_link.updated', { type: 'payment-link', id: link.id, label: link.title }, changes);
+    }
   }
   res.json({ paymentLink: paymentLinkView(link) });
+});
+
+router.delete('/payment-links/:id', canChange, async (req, res) => {
+  const filter = { _id: objectId(req.params.id, 'Payment link not found'), deletedAt: { $exists: false }, ...(req.merchant ? { platform: { $in: req.ownPlatforms } } : {}) };
+  const link = await PaymentLink.findOne(filter);
+  if (!link) throw notFound('Payment link not found');
+  link.status = 'disabled';
+  link.deletedAt = new Date();
+  await link.save();
+  await audit(req, 'payment_link.deleted', { type: 'payment-link', id: link.id, label: link.title });
+  res.status(204).end();
 });
 
 // --- Platforms -------------------------------------------------------------------------------

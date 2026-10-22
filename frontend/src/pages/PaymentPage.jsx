@@ -45,6 +45,7 @@ export default function PaymentPage() {
   if (isPending) return <Spinner />;
   if (error) return <ErrorMessage error={error} />;
   const { payment, platform, till, deliveries } = data;
+  const displayReference = payment.purpose === 'payment-link' && payment.mpesaReceipt ? payment.mpesaReceipt : payment.reference;
 
   return (
     <>
@@ -53,7 +54,7 @@ export default function PaymentPage() {
       </Link>
       <PageHeader
         title={formatKes(payment.amount)}
-        subtitle={`${platform?.name || payment.platform} · ${payment.reference}`}
+        subtitle={`${platform?.name || payment.platform} · ${displayReference}`}
         actions={
           canEdit && (
             <>
@@ -102,7 +103,7 @@ export default function PaymentPage() {
           <dl className="kv">
             <Row label="Platform">{platform ? <Link to={`/platforms/${platform.id}`}>{platform.name}</Link> : payment.platform}</Row>
             <Row label="Reference">
-              <span className="mono">{payment.reference}</span>
+              <span className="mono">{displayReference}</span>
             </Row>
             {payment.purpose && <Row label="Purpose">{payment.purpose}</Row>}
             {payment.description && <Row label="Description">{payment.description}</Row>}

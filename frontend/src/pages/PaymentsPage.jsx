@@ -148,7 +148,7 @@ export default function PaymentsPage() {
                       </td>
                       <td>{p.platform?.name}</td>
                       <td className="mono">
-                        {p.reference}
+                        {p.purpose === 'payment-link' && p.mpesaReceipt ? p.mpesaReceipt : p.reference}
                         {p.purpose && <small className="muted"> · {p.purpose}</small>}
                       </td>
                       <td className="mono">{p.phone}</td>

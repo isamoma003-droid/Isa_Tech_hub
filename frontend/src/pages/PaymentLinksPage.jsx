@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ExternalLink, Link2, Plus, ToggleLeft, ToggleRight } from 'lucide-react';
+import { ExternalLink, Link2, Pencil, Plus, ToggleLeft, ToggleRight, Trash2 } from 'lucide-react';
 import { api } from '../api/client.js';
 import { useAction, useAuthConfig, usePaymentLinks, usePlatforms } from '../api/queries.js';
 import { CopyButton, ErrorMessage, Field, PageHeader, Spinner } from '../components/ui.jsx';
@@ -20,31 +20,58 @@ const INITIAL = {
   collectEmail: true,
 };
 
-function LinkForm({ platforms, limits, create, onCancel, onCreated }) {
-  const [form, setForm] = useState(() => ({ ...INITIAL, minAmount: String(limits.minAmount), maxAmount: String(limits.maxAmount) }));
+function LinkForm({ platforms, limits, item, mutation, onCancel, onSaved }) {
+  const [form, setForm] = useState(() => ({
+    ...INITIAL,
+    minAmount: String(limits.minAmount),
+    maxAmount: String(limits.maxAmount),
+    ...(item && {
+      platform: item.platform?.id || '',
+      title: item.title,
+      description: item.description,
+      amountType: item.amountType,
+      amount: item.amount === null ? '' : String(item.amount),
+      minAmount: String(item.minAmount ?? limits.minAmount),
+      maxAmount: String(item.maxAmount ?? limits.maxAmount),
+      usage: item.usage,
+      collectName: item.collectName,
+      collectEmail: item.collectEmail,
+    }),
+  }));
   const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
+  const configurationLocked = item?.status === 'paid';
 
   const submit = (event) => {
     event.preventDefault();
     const body = {
-      ...form,
-      platform: form.platform || platforms[0]?.id || '',
-      ...(form.amountType === 'fixed'
+      title: form.title,
+      description: form.description,
+      ...(!configurationLocked && { amountType: form.amountType }),
+      ...(!configurationLocked && {
+        usage: form.usage,
+        collectName: form.collectName,
+        collectEmail: form.collectEmail,
+      }),
+      ...(item ? {} : { platform: form.platform || platforms[0]?.id || '' }),
+      ...(!configurationLocked && (form.amountType === 'fixed'
         ? { amount: Number(form.amount) }
-        : { minAmount: Number(form.minAmount), maxAmount: Number(form.maxAmount) }),
+        : { minAmount: Number(form.minAmount), maxAmount: Number(form.maxAmount) })),
     };
-    if (form.amountType === 'fixed') delete body.minAmount;
-    else delete body.amount;
-    create.mutate(body, { onSuccess: (result) => onCreated(result.paymentLink) });
+    if (!configurationLocked) {
+      if (form.amountType === 'fixed') delete body.minAmount;
+      else delete body.amount;
+    }
+    mutation.mutate(item ? { id: item.id, body } : body, { onSuccess: (result) => onSaved(result?.paymentLink) });
   };
 
   return (
     <section className="card stack">
-      <h2>Create a payment link</h2>
+      <h2>{item ? `Edit ${item.title}` : 'Create a payment link'}</h2>
+      {configurationLocked && <p className="hint">This single-use link has been paid. Only its name and description can be changed.</p>}
       <form className="stack" onSubmit={submit}>
         <div className="form-grid">
           <Field label="Platform">
-            <select value={form.platform || platforms[0]?.id || ''} onChange={(event) => update('platform', event.target.value)} required>
+            <select value={form.platform || platforms[0]?.id || ''} onChange={(event) => update('platform', event.target.value)} required disabled={Boolean(item)}>
               {platforms.map((platform) => <option value={platform.id} key={platform.id}>{platform.name}</option>)}
             </select>
           </Field>
@@ -57,13 +84,13 @@ function LinkForm({ platforms, limits, create, onCancel, onCreated }) {
         </Field>
         <div className="form-grid">
           <Field label="Amount">
-            <select value={form.amountType} onChange={(event) => update('amountType', event.target.value)}>
+            <select value={form.amountType} onChange={(event) => update('amountType', event.target.value)} disabled={configurationLocked}>
               <option value="fixed">Fixed amount</option>
               <option value="customer">Customer enters amount</option>
             </select>
           </Field>
           <Field label="Link usage">
-            <select value={form.usage} onChange={(event) => update('usage', event.target.value)}>
+            <select value={form.usage} onChange={(event) => update('usage', event.target.value)} disabled={configurationLocked}>
               <option value="reusable">Reusable</option>
               <option value="single-use">Single use</option>
             </select>
@@ -71,27 +98,27 @@ function LinkForm({ platforms, limits, create, onCancel, onCreated }) {
         </div>
         {form.amountType === 'fixed' ? (
           <Field label="Amount (KES)">
-            <input type="number" min="1" step="1" value={form.amount} onChange={(event) => update('amount', event.target.value)} required />
+            <input type="number" min="1" step="1" value={form.amount} onChange={(event) => update('amount', event.target.value)} required disabled={configurationLocked} />
           </Field>
         ) : (
           <div className="form-grid">
             <Field label="Minimum (KES)">
-              <input type="number" min="1" step="1" value={form.minAmount} onChange={(event) => update('minAmount', event.target.value)} required />
+              <input type="number" min="1" step="1" value={form.minAmount} onChange={(event) => update('minAmount', event.target.value)} required disabled={configurationLocked} />
             </Field>
             <Field label="Maximum (KES)">
-              <input type="number" min="1" step="1" value={form.maxAmount} onChange={(event) => update('maxAmount', event.target.value)} required />
+              <input type="number" min="1" step="1" value={form.maxAmount} onChange={(event) => update('maxAmount', event.target.value)} required disabled={configurationLocked} />
             </Field>
           </div>
         )}
         <fieldset className="link-fields">
           <legend>Ask the customer for</legend>
-          <label><input type="checkbox" checked={form.collectName} onChange={(event) => update('collectName', event.target.checked)} /> Name</label>
-          <label><input type="checkbox" checked={form.collectEmail} onChange={(event) => update('collectEmail', event.target.checked)} /> Email and receipt</label>
+          <label><input type="checkbox" checked={form.collectName} onChange={(event) => update('collectName', event.target.checked)} disabled={configurationLocked} /> Name</label>
+          <label><input type="checkbox" checked={form.collectEmail} onChange={(event) => update('collectEmail', event.target.checked)} disabled={configurationLocked} /> Email and receipt</label>
         </fieldset>
-        <ErrorMessage error={create.error} title="Payment link not created" />
+        <ErrorMessage error={mutation.error} title={item ? 'Payment link not updated' : 'Payment link not created'} />
         <div className="button-row">
-          <button type="submit" className="btn btn-primary" disabled={create.isPending || !platforms.length}>
-            {create.isPending ? 'Creating…' : 'Create link'}
+          <button type="submit" className="btn btn-primary" disabled={mutation.isPending || (!item && !platforms.length)}>
+            {mutation.isPending ? (item ? 'Saving…' : 'Creating…') : item ? 'Save changes' : 'Create link'}
           </button>
           <button type="button" className="btn btn-ghost" onClick={onCancel}>Cancel</button>
         </div>
@@ -106,12 +133,15 @@ export default function PaymentLinksPage() {
   const platformsQuery = usePlatforms();
   const config = useAuthConfig();
   const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState(null);
   const [created, setCreated] = useState(null);
   const create = useAction((body) => api('/payment-links', { method: 'POST', body }), [['payment-links']]);
+  const update = useAction(({ id, body }) => api(`/payment-links/${id}`, { method: 'PATCH', body }), [['payment-links']]);
   const toggle = useAction(
     ({ id, active }) => api(`/payment-links/${id}`, { method: 'PATCH', body: { active } }),
     [['payment-links']],
   );
+  const remove = useAction(({ id }) => api(`/payment-links/${id}`, { method: 'DELETE' }), [['payment-links']]);
 
   if (links.isPending || platformsQuery.isPending || config.isPending) return <Spinner />;
   if (links.error) return <ErrorMessage error={links.error} />;
@@ -125,9 +155,10 @@ export default function PaymentLinksPage() {
       <PageHeader
         title="Payment links"
         subtitle="Share a secure checkout page and accept M-Pesa payments without building a checkout flow."
-        actions={canEdit && <button type="button" className="btn btn-primary" onClick={() => setShowForm((value) => !value)}><Plus size={16} aria-hidden="true" /> Create link</button>}
+        actions={canEdit && <button type="button" className="btn btn-primary" onClick={() => { setEditing(null); setShowForm((value) => !value); }}><Plus size={16} aria-hidden="true" /> Create link</button>}
       />
       <ErrorMessage error={toggle.error} title="Could not update link" />
+      <ErrorMessage error={update.error || remove.error} title="Could not update payment link" />
       {created && (
         <div className="notice notice-ok payment-link-created" role="status">
           <div><strong>Your payment link is ready</strong><p>{created.url}</p></div>
@@ -136,10 +167,21 @@ export default function PaymentLinksPage() {
       )}
       {showForm && canEdit && (
         platforms.length ? (
-          <LinkForm platforms={platforms} limits={config.data.limits} create={create} onCancel={() => setShowForm(false)} onCreated={(link) => { setCreated(link); setShowForm(false); }} />
+          <LinkForm platforms={platforms} limits={config.data.limits} mutation={create} onCancel={() => setShowForm(false)} onSaved={(link) => { setCreated(link); setShowForm(false); }} />
         ) : (
           <div className="notice notice-warn"><p>Set up an active platform before creating a payment link. <Link to="/platforms/new">Add a platform</Link>.</p></div>
         )
+      )}
+      {editing && canEdit && (
+        <LinkForm
+          key={editing.id}
+          platforms={platformsQuery.data.platforms}
+          limits={config.data.limits}
+          item={editing}
+          mutation={update}
+          onCancel={() => setEditing(null)}
+          onSaved={() => setEditing(null)}
+        />
       )}
       {items.length ? (
         <div className="payment-links-list">
@@ -157,6 +199,21 @@ export default function PaymentLinksPage() {
               <div className="payment-link-actions">
                 <span className={`badge badge-${item.status === 'active' ? 'active' : item.status === 'paid' ? 'paid' : 'disabled'}`}>{item.status === 'paid' ? 'Paid' : item.status === 'active' ? 'Active' : 'Paused'}</span>
                 <a href={item.url} target="_blank" rel="noreferrer" className="btn btn-ghost btn-small" aria-label={`Open ${item.title} checkout`}><ExternalLink size={15} /> Open</a>
+                {canEdit && (
+                  <>
+                    <button type="button" className="btn btn-ghost btn-small" onClick={() => { setShowForm(false); setEditing(item); }}><Pencil size={15} aria-hidden="true" /> Edit</button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-small"
+                      disabled={remove.isPending}
+                      onClick={() => {
+                        if (window.confirm(`Delete "${item.title}"? Its checkout link will stop working; payment history will be kept.`)) remove.mutate({ id: item.id });
+                      }}
+                    >
+                      <Trash2 size={15} aria-hidden="true" /> Delete
+                    </button>
+                  </>
+                )}
                 {canEdit && item.status !== 'paid' && (
                   <button type="button" className="btn btn-ghost btn-small" disabled={toggle.isPending} onClick={() => toggle.mutate({ id: item.id, active: item.status !== 'active' })}>
                     {item.status === 'active' ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
