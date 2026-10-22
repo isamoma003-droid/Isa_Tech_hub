@@ -85,8 +85,8 @@ export default function PaymentPage() {
           <dl className="kv">
             <Row label="Amount asked">{formatKes(payment.amount)}</Row>
             {payment.paidAmount !== null && <Row label="Amount M-Pesa reported">{formatKes(payment.paidAmount)}</Row>}
-            <Row label="M-Pesa receipt">
-              <span className="mono">{payment.receipt || '—'}</span>
+            <Row label="M-Pesa confirmation code">
+              <span className="mono">{payment.mpesaReceipt || '—'}</span>
             </Row>
             <Row label="Phone">
               <span className="mono">{payment.phone}</span>

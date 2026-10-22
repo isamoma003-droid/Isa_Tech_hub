@@ -16,7 +16,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const next = location.state?.from || '/';
+  const next = location.state?.from || '/dashboard';
 
   if (admin) return <Navigate to={next} replace />;
 

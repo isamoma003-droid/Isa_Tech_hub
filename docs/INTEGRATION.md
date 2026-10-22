@@ -48,7 +48,7 @@ Hosted payment links
 
 Merchants and IsaPay staff can create hosted links from **Payment links** in the dashboard. A link is assigned to one active platform and can use a fixed KES amount or let the payer choose within a configured range. Reusable links accept multiple payments; single-use links lock while a payment is pending and close after the first confirmed payment.
 
-Share the generated dashboard URL (`<APP_URL>/pay/<link-slug>`). The checkout collects a Kenyan M-Pesa phone number and can also ask for the payer's name, email and order/reference. The Hub sends the STK push and confirms payment with Safaricom like an API-created payment. The resulting payment appears in the dashboard and uses the platform's normal signed webhook. A receipt is emailed through the configured mail provider when an email was collected.
+Share the generated dashboard URL (`<APP_URL>/pay/<link-slug>`). The checkout collects a Kenyan M-Pesa phone number and can also ask for the payer's name and email. Customers do not enter an M-Pesa reference: after Safaricom confirms a successful payment, IsaPay records and displays the Safaricom-issued confirmation code (`MpesaReceiptNumber`). The code appears in the dashboard, CSV export, customer receipt email, platform API responses and signed webhooks. The existing `receipt` field remains available for compatibility; `mpesaReceipt` is its explicit alias. The payment's `reference` remains an IsaPay-generated link identifier for link checkouts and is not the M-Pesa code.
 
 Server-side: create a payment (Node/Express example)
 
@@ -105,7 +105,7 @@ app.post('/api/payments/hub-webhook', express.raw({ type: 'application/json' }),
     const signatureHeader = req.get('ISA-Signature') || req.get('isa-signature') || req.get('Isa-Signature');
     const event = verifyWebhook({ secret: process.env.ISA_HUB_WEBHOOK_SECRET, rawBody: req.body, signature: signatureHeader });
 
-    // event example: { type: 'payment.paid', data: { payment: { id, reference, receipt, status, amount, ... } } }
+    // event example: { type: 'payment.paid', data: { payment: { id, reference, receipt, mpesaReceipt, status, amount, ... } } }
     switch (event.type) {
       case 'payment.paid':
         // idempotently update your order to paid

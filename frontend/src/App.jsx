@@ -36,17 +36,22 @@ function RequireSignIn({ children }) {
   return children;
 }
 
+function HomeRoute() {
+  const { admin } = useAuth();
+  return admin ? <Navigate to="/dashboard" replace /> : <HomePage />;
+}
+
 // Pages only the ISA Tech team sees (the API refuses merchants too).
 function StaffOnly({ children }) {
   const { isStaff } = useAuth();
-  return isStaff ? children : <Navigate to="/" replace />;
+  return isStaff ? children : <Navigate to="/dashboard" replace />;
 }
 
 export default function App() {
   return (
     <Routes>
       <Route element={<PublicLayout />}>
-        <Route index element={<HomePage />} />
+        <Route index element={<HomeRoute />} />
         <Route path="home" element={<HomePage />} />
         <Route path="login" element={<LoginPage />} />
         <Route path="register" element={<RegisterPage />} />
@@ -69,7 +74,7 @@ export default function App() {
           </RequireSignIn>
         }
       >
-        <Route index element={<OverviewPage />} />
+        <Route path="dashboard" element={<OverviewPage />} />
         <Route path="payments" element={<PaymentsPage />} />
         <Route path="payments/:id" element={<PaymentPage />} />
         <Route path="payment-links" element={<PaymentLinksPage />} />

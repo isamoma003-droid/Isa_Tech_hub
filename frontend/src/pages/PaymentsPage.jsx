@@ -105,7 +105,7 @@ export default function PaymentsPage() {
           <span className="search-box">
             <input
               type="search"
-              placeholder="Reference, M-Pesa receipt or phone"
+              placeholder="Reference, M-Pesa confirmation code or phone"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onBlur={() => search.trim() !== filters.q && update({ q: search.trim() })}
@@ -137,7 +137,7 @@ export default function PaymentsPage() {
                     <th>Phone</th>
                     <th className="num">Amount</th>
                     <th>Status</th>
-                    <th>Receipt</th>
+                    <th>M-Pesa confirmation code</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -159,7 +159,7 @@ export default function PaymentsPage() {
                       <td>
                         <StatusBadge status={p.status} />
                       </td>
-                      <td className="mono">{p.receipt || '—'}</td>
+                      <td className="mono">{p.mpesaReceipt || '—'}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -18,7 +18,6 @@ const INITIAL = {
   usage: 'reusable',
   collectName: true,
   collectEmail: true,
-  collectReference: true,
 };
 
 function LinkForm({ platforms, limits, create, onCancel, onCreated }) {
@@ -88,7 +87,6 @@ function LinkForm({ platforms, limits, create, onCancel, onCreated }) {
           <legend>Ask the customer for</legend>
           <label><input type="checkbox" checked={form.collectName} onChange={(event) => update('collectName', event.target.checked)} /> Name</label>
           <label><input type="checkbox" checked={form.collectEmail} onChange={(event) => update('collectEmail', event.target.checked)} /> Email and receipt</label>
-          <label><input type="checkbox" checked={form.collectReference} onChange={(event) => update('collectReference', event.target.checked)} /> Order/reference</label>
         </fieldset>
         <ErrorMessage error={create.error} title="Payment link not created" />
         <div className="button-row">

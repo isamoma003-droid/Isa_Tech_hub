@@ -50,7 +50,9 @@ app.post('/payments/isapay-webhook', express.raw({ type: 'application/json' }), 
   } catch {
     return res.status(400).end();
   }
-  if (event.type === 'payment.paid') markOrderPaid(event.data.payment.reference, event.data.payment.receipt);
+  if (event.type === 'payment.paid') {
+    markOrderPaid(event.data.payment.reference, event.data.payment.mpesaReceipt || event.data.payment.receipt);
+  }
   res.status(204).end();
 });`,
   },
@@ -178,7 +180,10 @@ export default function DevelopersPage() {
             </div>
             <div className="kv-row">
               <dt>Good to know</dt>
-              <dd>A failed payment can turn paid if a late success arrives. Handle events idempotently by payment id.</dd>
+              <dd>
+                The Safaricom confirmation code is available as <code>mpesaReceipt</code> (and the compatible <code>receipt</code> field) after payment
+                confirmation. Handle events idempotently by payment id; a late callback may deliver the code in a follow-up event.
+              </dd>
             </div>
           </dl>
         </div>

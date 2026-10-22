@@ -30,10 +30,10 @@ Each platform keeps its own data (bookings, books, organizer payouts). The Hub h
 - **Signed webhooks** to each platform (`payment.paid`, `payment.failed`, `payment.disputed`, plus `ping` for testing), retried 9 times over about two days.
 - **Dashboard**:
   - Money today, this week and this month, with a per-day chart and a per-platform split.
-  - A payments search with filters (date, platform, status, receipt, phone, reference) and CSV export.
+  - A payments search with filters (date, platform, status, M-Pesa confirmation code, phone, reference) and CSV export.
   - A per-payment timeline showing what was sent, what Safaricom answered, and every webhook attempt, with "Check with Safaricom" and "Resend webhook" buttons.
   - Platform onboarding: API key and webhook secret shown once, rotate either, send a test webhook, disable a platform.
-  - Hosted **Payment links**: create fixed-amount or customer-entered KES links, choose reusable or single-use, share a secure M-Pesa checkout, and track receipts with the payment.
+  - Hosted **Payment links**: create fixed-amount or customer-entered KES links, choose reusable or single-use, share a secure M-Pesa checkout, and track the Safaricom-issued confirmation code with each payment (no customer-entered reference).
   - Numbered M-Pesa tills ("M-Pesa till 1", "M-Pesa till 2"…), each with its own numbered Daraja keys, and an audit log.
   - A **Developers** page for partners: the API base URL, endpoints, webhook signature checks in Node.js, PHP and Python, and a download of the Node.js client.
   - **Installable as an app** on Windows, macOS, Android and iPhone (see [Install the dashboard as an app](#install-the-dashboard-as-an-app)).
@@ -109,7 +109,7 @@ Email templates use IsaPay branding, inline styles for email-client compatibilit
 
 Legacy SMTP remains available with `MAIL_PROVIDER=smtp` and `SMTP_URL`. Set `SUPPORT_PHONE` for the contact page; replace the documented placeholder address/phone with monitored business contacts. Set `APP_URL` if email links should point somewhere other than `CLIENT_ORIGIN`. Without an email provider, admins use **New temporary password** and **Mark email confirmed** on the account's page, and the support page shows its direct contact details.
 
-**Hosted payment links.** In the dashboard, open **Payment links → Create link**, choose a platform, and set a fixed KES amount or a payer-entered amount range. Choose reusable or single-use, and whether checkout collects the payer's name, email (for a receipt), and order/reference. IsaPay sends an M-Pesa STK prompt, tracks the payment with the usual Safaricom confirmation and webhook flow, and turns off a single-use link after its first confirmed payment. Copy and share the `https://<dashboard>/pay/<link-slug>` URL.
+**Hosted payment links.** In the dashboard, open **Payment links → Create link**, choose a platform, and set a fixed KES amount or a payer-entered amount range. Choose reusable or single-use, and whether checkout collects the payer's name and email (for a receipt). Customers don't enter a reference; once Safaricom confirms payment, IsaPay records and displays its M-Pesa confirmation code in checkout, the dashboard, CSV export, customer receipt email, and platform webhooks. Copy and share the `https://<dashboard>/pay/<link-slug>` URL.
 
 **Your account** (every user): name and phone; for merchants, business details and **payout details** (M-Pesa number or bank account, where IsaPay sends money it collected for them, shown to admins next to each payout to send); set or change the password; link or unlink Google; resend the email confirmation; **sign out everywhere else**.
 
@@ -323,7 +323,10 @@ app.post('/api/payments/hub-webhook', express.raw({ type: 'application/json' }),
   } catch {
     return res.status(400).end();
   }
-  if (event.type === 'payment.paid') markOrderPaid(event.data.payment.reference, event.data.payment.receipt);
+  if (event.type === 'payment.paid') {
+    const payment = event.data.payment;
+    markOrderPaid(payment.reference, payment.mpesaReceipt || payment.receipt);
+  }
   res.status(204).end();
 });
 ```

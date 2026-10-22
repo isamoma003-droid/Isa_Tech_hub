@@ -6,8 +6,9 @@ services:
     runtime: node
     rootDir: backend
     # The free plan sleeps after 15 idle minutes, and a sleeping server misses Safaricom's payment
-    # callbacks. Until you move to the Starter plan (always on), the API pings itself every
-    # 10 minutes (KEEP_ALIVE below) so it never sleeps. On Starter, set KEEP_ALIVE to "false".
+    # callbacks. Until you move to the Starter plan (always on), the API pings itself on startup
+    # and every 10 minutes (KEEP_ALIVE below) to reduce free-plan sleep. On Starter, set
+    # KEEP_ALIVE to "false".
     plan: free
     # Render's closest region to Kenya.
     region: frankfurt
@@ -54,7 +55,7 @@ services:
       # MPESA_CONSUMER_KEY_2, MPESA_CONSUMER_SECRET_2, MPESA_PASSKEY_2, optional MPESA_ENV_2 and
       # MPESA_TILL_NAME_2). Each number is its own till, so keys never overlap. Add them in the
       # Environment tab, or add the till in the dashboard (M-Pesa tills → Add till).
-      # Keeps the free plan awake: pings https://<service>.onrender.com/health every 10 minutes.
+      # Pings https://<service>.onrender.com/health on startup and every 10 minutes.
       - key: KEEP_ALIVE
         value: "true"
       - key: KEEP_ALIVE_EVERY_MINUTES

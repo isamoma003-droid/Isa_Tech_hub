@@ -62,7 +62,16 @@ router.get('/:slug/payments/:id', async (req, res) => {
   if (payment.status === 'pending' && Date.now() - payment.createdAt.getTime() > 20_000) {
     ({ payment } = await checkPayment(payment, { source: 'poll', minGapMs: 10_000 }));
   }
-  res.json({ payment: { id: payment.id, amount: payment.amount, currency: payment.currency, status: payment.status, message: payment.message } });
+  res.json({
+    payment: {
+      id: payment.id,
+      amount: payment.amount,
+      currency: payment.currency,
+      status: payment.status,
+      message: payment.message,
+      mpesaReceipt: payment.receipt || null,
+    },
+  });
 });
 
 const checkoutSchema = z.object({
@@ -70,7 +79,6 @@ const checkoutSchema = z.object({
   amount: z.coerce.number().int().min(env.minAmount).max(env.maxAmount),
   name: z.string().trim().max(80).optional(),
   email: z.union([z.literal(''), z.string().trim().toLowerCase().max(120).email()]).optional(),
-  reference: z.string().trim().max(64).optional(),
   requestId: z.string().uuid(),
 });
 
@@ -86,7 +94,6 @@ router.post('/:slug/pay', validate(checkoutSchema), async (req, res) => {
   }
   if (link.collectName && !body.name?.trim()) throw badRequest('Enter your name');
   if (link.collectEmail && !body.email?.trim()) throw badRequest('Enter your email address');
-  if (link.collectReference && !body.reference?.trim()) throw badRequest('Enter your order or reference');
   assertApproved(platform);
   await assertCanTakePayments(platform);
 
@@ -108,7 +115,7 @@ router.post('/:slug/pay', validate(checkoutSchema), async (req, res) => {
     result = await createPayment(platform, {
       phone,
       amount: body.amount,
-      reference: body.reference?.trim() || `link-${link.slug.slice(0, 16)}`,
+      reference: `link-${link.slug}`,
       purpose: 'payment-link',
       description: link.title.slice(0, 100),
       idempotencyKey,

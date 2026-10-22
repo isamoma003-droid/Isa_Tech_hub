@@ -218,7 +218,7 @@ router.get('/payments/export.csv', validate(paymentsQuery, 'query'), async (req,
     .sort({ createdAt: -1 })
     .limit(10_000)
     .populate('platform', 'name slug');
-  const header = ['Created (Kenya)', 'Paid (Kenya)', 'Platform', 'Reference', 'Purpose', 'Phone', 'Amount', 'Paid amount', 'Status', 'M-Pesa receipt', 'Payment id'];
+  const header = ['Created (Kenya)', 'Paid (Kenya)', 'Platform', 'Reference', 'Purpose', 'Phone', 'Amount', 'Paid amount', 'Status', 'M-Pesa confirmation code', 'Payment id'];
   const rows = payments.map((p) => [
     kenyaTime(p.createdAt),
     kenyaTime(p.paidAt),
@@ -306,7 +306,6 @@ const createPaymentLinkSchema = z
     usage: z.enum(['reusable', 'single-use']).default('reusable'),
     collectName: z.boolean().default(true),
     collectEmail: z.boolean().default(true),
-    collectReference: z.boolean().default(true),
   })
   .superRefine((value, ctx) => {
     if (value.amountType === 'fixed' && value.amount === undefined) {
@@ -346,7 +345,6 @@ router.post('/payment-links', canChange, validate(createPaymentLinkSchema), asyn
     usage: body.usage,
     collectName: body.collectName,
     collectEmail: body.collectEmail,
-    collectReference: body.collectReference,
     createdBy: req.admin._id,
   });
   await link.populate('platform', 'name slug');

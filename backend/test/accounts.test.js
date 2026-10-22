@@ -389,7 +389,6 @@ describe('Accounts', { skip: !uri && 'set MONGODB_URI_TEST to run the API tests'
       usage: 'single-use',
       collectName: true,
       collectEmail: true,
-      collectReference: true,
     });
     assert.equal(created.status, 201);
     const link = created.body.paymentLink;
@@ -399,6 +398,7 @@ describe('Accounts', { skip: !uri && 'set MONGODB_URI_TEST to run the API tests'
     const checkout = await request('GET', `/api/checkout/${link.slug}`);
     assert.equal(checkout.status, 200);
     assert.equal(checkout.body.paymentLink.title, 'Ticket order');
+    assert.equal(checkout.body.paymentLink.collectReference, undefined);
 
     const requestId = crypto.randomUUID();
     const body = {
@@ -406,7 +406,6 @@ describe('Accounts', { skip: !uri && 'set MONGODB_URI_TEST to run the API tests'
       amount: 250,
       name: 'Amina Hassan',
       email: 'payer@duka.test',
-      reference: 'ORDER-123',
       requestId,
     };
     const started = await request('POST', `/api/checkout/${link.slug}/pay`, { body });
@@ -416,12 +415,16 @@ describe('Accounts', { skip: !uri && 'set MONGODB_URI_TEST to run the API tests'
     assert.equal(replay.body.replayed, true);
 
     const payment = await Payment.findById(started.body.payment.id);
-    await markPaid(payment, { receipt: 'LINK123456', paidAmount: 250, source: 'test' });
+    assert.match(payment.reference, /^link-/);
+    await markPaid(payment, { paidAmount: 250, source: 'test' });
+    await markPaid(payment, { receipt: 'LINK123456', paidAmount: 250, source: 'callback' });
+    const status = await request('GET', `/api/checkout/${link.slug}/payments/${payment.id}`);
+    assert.equal(status.body.payment.mpesaReceipt, 'LINK123456');
     assert.equal((await PaymentLink.findById(link.id)).status, 'paid');
     assert.equal((await request('GET', `/api/checkout/${link.slug}`)).status, 404);
     assert.match(mailTo('payer@duka.test')[0].subject, /Payment received/);
     assert.match(mailTo('payer@duka.test')[0].html, /Payment received/);
-    assert.match(mailTo('payer@duka.test')[0].html, /LINK123456/);
+    assert.ok(mailTo('payer@duka.test').some((mail) => mail.html.includes('M-Pesa confirmation code') && mail.html.includes('LINK123456')));
   });
 
   test('Google: a new person gets a merchant account, then signs straight in', async () => {

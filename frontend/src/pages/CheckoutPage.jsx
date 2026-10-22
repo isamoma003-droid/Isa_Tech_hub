@@ -5,7 +5,7 @@ import { publicApi } from '../api/client.js';
 import { ErrorMessage, Field, Spinner } from '../components/ui.jsx';
 import { formatKes } from '../utils/format.js';
 
-const EMPTY = { phone: '', amount: '', name: '', email: '', reference: '' };
+const EMPTY = { phone: '', amount: '', name: '', email: '' };
 
 export default function CheckoutPage() {
   const { slug } = useParams();
@@ -34,9 +34,11 @@ export default function CheckoutPage() {
 
   const paymentId = payment?.id;
   const paymentStatus = payment?.status;
+  const paymentReceipt = payment?.mpesaReceipt;
 
   useEffect(() => {
-    if (!paymentId || paymentStatus !== 'pending') return undefined;
+    const awaitingConfirmationCode = ['paid', 'disputed'].includes(paymentStatus) && !paymentReceipt;
+    if (!paymentId || (paymentStatus !== 'pending' && !awaitingConfirmationCode)) return undefined;
     let cancelled = false;
     const timer = window.setInterval(() => {
       publicApi(`/checkout/${encodeURIComponent(slug)}/payments/${paymentId}`)
@@ -47,11 +49,18 @@ export default function CheckoutPage() {
           if (!cancelled) setError(reason);
         });
     }, 5000);
+    const stopAfterReceiptWait = awaitingConfirmationCode
+      ? window.setTimeout(() => {
+          cancelled = true;
+          window.clearInterval(timer);
+        }, 60_000)
+      : undefined;
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      if (stopAfterReceiptWait) window.clearTimeout(stopAfterReceiptWait);
     };
-  }, [paymentId, paymentStatus, slug]);
+  }, [paymentId, paymentReceipt, paymentStatus, slug]);
 
   const onSubmit = async (event) => {
     event.preventDefault();
@@ -66,7 +75,6 @@ export default function CheckoutPage() {
           amount: Number(form.amount),
           ...(link.collectName ? { name: form.name } : {}),
           ...(link.collectEmail ? { email: form.email } : {}),
-          ...(link.collectReference ? { reference: form.reference } : {}),
           requestId: crypto.randomUUID(),
         },
       });
@@ -106,12 +114,20 @@ export default function CheckoutPage() {
         {payment?.status === 'paid' ? (
           <div className="notice notice-ok checkout-result" role="status">
             <CheckCircle2 size={20} aria-hidden="true" />
-            <div><strong>Payment received</strong><p>{payment.message}</p></div>
+            <div>
+              <strong>Payment received</strong>
+              <p>{payment.message}</p>
+              {payment.mpesaReceipt && <p>M-Pesa confirmation code: <span className="mono">{payment.mpesaReceipt}</span></p>}
+            </div>
           </div>
         ) : payment && ['failed', 'disputed'].includes(payment.status) ? (
           <div className="notice notice-error checkout-result" role="alert">
             <XCircle size={20} aria-hidden="true" />
-            <div><strong>{payment.status === 'disputed' ? 'Payment needs review' : 'Payment not completed'}</strong><p>{payment.message}</p></div>
+            <div>
+              <strong>{payment.status === 'disputed' ? 'Payment needs review' : 'Payment not completed'}</strong>
+              <p>{payment.message}</p>
+              {payment.mpesaReceipt && <p>M-Pesa confirmation code: <span className="mono">{payment.mpesaReceipt}</span></p>}
+            </div>
           </div>
         ) : payment?.status === 'pending' ? (
           <div className="notice notice-info checkout-result" role="status">
@@ -137,11 +153,6 @@ export default function CheckoutPage() {
             {link.collectEmail && (
               <Field label="Email address" hint="We'll send a receipt after the payment is confirmed.">
                 <input type="email" autoComplete="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required maxLength={120} />
-              </Field>
-            )}
-            {link.collectReference && (
-              <Field label="Order or reference">
-                <input value={form.reference} onChange={(event) => setForm({ ...form, reference: event.target.value })} required maxLength={64} />
               </Field>
             )}
             <button type="submit" className="btn btn-primary btn-large btn-block" disabled={busy}>

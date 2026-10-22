@@ -521,6 +521,7 @@ describe('ISA Tech Hub API', { skip: !uri && 'set MONGODB_URI_TEST to run the AP
     const event = verifyWebhook({ secret: webhookSecret, rawBody: Buffer.from(received[0].body), signature: received[0].headers['isa-signature'] });
     assert.equal(event.type, 'payment.paid');
     assert.equal(event.data.payment.receipt, 'TJ1SDK0001');
+    assert.equal(event.data.payment.mpesaReceipt, 'TJ1SDK0001');
     assert.throws(() => verifyWebhook({ secret: 'whsec_wrong', rawBody: received[0].body, signature: received[0].headers['isa-signature'] }));
   });
 

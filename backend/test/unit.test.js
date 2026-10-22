@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { describe, test } from 'node:test';
 import jwt from 'jsonwebtoken';
+import { Payment } from '../src/models/Payment.js';
+import { PaymentLink } from '../src/models/PaymentLink.js';
 import { Till, envSuffix } from '../src/models/Till.js';
 import { feeFor, resolvePlan } from '../src/services/billing.js';
 import { setGoogleCertsFetcher, verifyGoogleIdToken } from '../src/services/google.js';
@@ -11,6 +13,31 @@ import { decryptSecret, encryptSecret, signWebhook, verifyWebhookSignature } fro
 import { assertPublicDestination, isPrivateAddress, isPublicHttpsUrl } from '../src/utils/network.js';
 import { maskPhone, normalizePhone } from '../src/utils/phone.js';
 import { darajaTimestamp, kenyaDay, monthRange, previousMonth, startOfKenyaDay } from '../src/utils/time.js';
+
+describe('M-Pesa confirmation codes', () => {
+  test('exposes Safaricom receipts to platforms and the dashboard', () => {
+    const payment = new Payment({
+      reference: 'order-123',
+      phone: '254712345678',
+      amount: 100,
+      receipt: 'UA42HD1234',
+    });
+
+    assert.equal(payment.toPlatform('demo').mpesaReceipt, 'UA42HD1234');
+    assert.equal(payment.toPlatform('demo').receipt, 'UA42HD1234', 'keep the existing API field');
+    assert.equal(payment.toAdminRow().mpesaReceipt, 'UA42HD1234');
+  });
+
+  test('payment links do not request a customer-entered reference', () => {
+    const link = new PaymentLink({
+      title: 'Ticket',
+      amountType: 'fixed',
+      amount: 100,
+    });
+
+    assert.equal(link.toPublic().collectReference, undefined);
+  });
+});
 
 describe('phone numbers', () => {
   test('normalizes the usual Kenyan formats', () => {
@@ -159,13 +186,14 @@ describe('keep-alive', () => {
     t.mock.timers.enable({ apis: ['setInterval'] });
     const calls = [];
     const stop = startKeepAlive({ url: 'https://hub.test/health', everyMs: 600_000, fetchFn: async (url) => (calls.push(url), { ok: true }) });
+    assert.deepEqual(calls, ['https://hub.test/health']);
     t.mock.timers.tick(600_000);
     t.mock.timers.tick(600_000);
     await Promise.resolve();
-    assert.deepEqual(calls, ['https://hub.test/health', 'https://hub.test/health']);
+    assert.deepEqual(calls, ['https://hub.test/health', 'https://hub.test/health', 'https://hub.test/health']);
     stop();
     t.mock.timers.tick(600_000);
-    assert.equal(calls.length, 2);
+    assert.equal(calls.length, 3);
 
     const local = [];
     startKeepAlive({ url: 'http://localhost:5100/health', fetchFn: async (url) => local.push(url) })();

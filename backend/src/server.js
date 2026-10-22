@@ -14,10 +14,11 @@ async function main() {
   app.listen(env.port, () => {
     console.log(`IsaPay (ISA Tech Hub) listening on http://localhost:${env.port}`);
     console.log(`Safaricom callbacks go to ${env.publicUrl}/mpesa/callback/<till>/<secret>`);
+    if (env.keepAlive) startKeepAlive();
+    else console.log('Keep-alive is off (set KEEP_ALIVE=true to enable it)');
   });
   if (env.workers) startWorkers();
   else console.log('Background work is off (WORKERS=false): pending payments and webhooks will wait');
-  if (env.keepAlive) startKeepAlive();
 }
 
 main().catch((err) => {

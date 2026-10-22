@@ -19,7 +19,7 @@ export default function RegisterPage() {
   const [error, setError] = useState(null);
 
   // Signed in (just now, or already): on to the dashboard, with a welcome for a new account.
-  if (admin) return <Navigate to="/" replace state={busy ? { welcome: true } : undefined} />;
+  if (admin) return <Navigate to="/dashboard" replace state={busy ? { welcome: true } : undefined} />;
   const set = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
   const fieldError = (path) => error?.details?.find?.((d) => d.path === path)?.message;
 

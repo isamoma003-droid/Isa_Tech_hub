@@ -159,7 +159,7 @@ export async function markPaid(payment, { receipt, paidAmount, source, note }) {
       }
       const link = await PaymentLink.findByIdAndUpdate(updated.paymentLink, update);
       if (link && updated.customerEmail) {
-        const details = updated.receipt ? `\nM-Pesa receipt: ${updated.receipt}` : '';
+        const details = updated.receipt ? `\nM-Pesa confirmation code: ${updated.receipt}` : '';
         await sendMail({
           to: updated.customerEmail,
           subject: `Payment received by ${updated.description || 'IsaPay'}`,
@@ -172,7 +172,7 @@ export async function markPaid(payment, { receipt, paidAmount, source, note }) {
             details: [
               { label: 'Amount received', value: `KES ${updated.paidAmount ?? updated.amount}` },
               { label: 'Reference', value: updated.reference },
-              ...(updated.receipt ? [{ label: 'M-Pesa receipt', value: updated.receipt }] : []),
+              ...(updated.receipt ? [{ label: 'M-Pesa confirmation code', value: updated.receipt }] : []),
             ],
             closing: `Payment processed securely by IsaPay for ${updated.description || 'the merchant'}.`,
           }),
@@ -185,9 +185,40 @@ export async function markPaid(payment, { receipt, paidAmount, source, note }) {
 
   // Already settled. A status check can confirm a payment before its callback brings the receipt.
   if (receipt) {
-    await Payment.updateOne({ _id: payment._id, status: 'paid', receipt: { $exists: false } }, { $set: { receipt } }).catch((err) => {
+    let receiptAdded = false;
+    try {
+      const result = await Payment.updateOne(
+        { _id: payment._id, status: 'paid', receipt: { $exists: false } },
+        { $set: { receipt } },
+      );
+      receiptAdded = result.modifiedCount > 0;
+    } catch (err) {
       if (!isDuplicateKey(err)) throw err;
-    });
+    }
+    if (receiptAdded) {
+      const updated = await Payment.findById(payment._id);
+      if (updated) {
+        await enqueuePaymentEvent(updated, 'payment.paid');
+        if (updated.paymentLink && updated.customerEmail) {
+          await sendMail({
+            to: updated.customerEmail,
+            subject: 'M-Pesa confirmation code for your payment',
+            text: `Hello${updated.customerName ? ` ${updated.customerName}` : ''},\n\nYour payment has been confirmed. M-Pesa confirmation code: ${updated.receipt}\n`,
+            html: emailTemplate({
+              preheader: 'Your M-Pesa confirmation code is available.',
+              title: 'Payment confirmation code',
+              greeting: `Hello${updated.customerName ? ` ${updated.customerName}` : ''},`,
+              paragraphs: ['Safaricom has provided the confirmation code for your payment.'],
+              details: [
+                { label: 'Amount received', value: `KES ${updated.paidAmount ?? updated.amount}` },
+                { label: 'M-Pesa confirmation code', value: updated.receipt },
+              ],
+              closing: `Payment processed securely by IsaPay for ${updated.description || 'the merchant'}.`,
+            }),
+          });
+        }
+      }
+    }
   }
   return { outcome: 'unchanged', payment: (await Payment.findById(payment._id)) || payment };
 }
