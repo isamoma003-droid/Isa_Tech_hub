@@ -229,7 +229,7 @@ router.get('/payments/export.csv', validate(paymentsQuery, 'query'), async (req,
     p.amount,
     p.paidAmount ?? '',
     p.status,
-    p.receipt || '',
+    p.mpesaReceipt || '',
     p.id,
   ]);
   await audit(req, 'payments.exported', { type: 'payments', label: `${payments.length} rows` }, req.valid.query);

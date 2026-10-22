@@ -92,6 +92,10 @@ paymentSchema.virtual('message').get(function message() {
   return resultMessage(this.resultCode, this.resultDesc);
 });
 
+paymentSchema.virtual('mpesaReceipt').get(function mpesaReceipt() {
+  return this.receipt || (this.status === 'paid' && this.callback?.resultCode === 0 ? this.callback.receipt || null : null);
+});
+
 // What platforms see, in API responses and webhooks.
 paymentSchema.methods.toPlatform = function toPlatform(platformSlug) {
   return {
@@ -109,8 +113,8 @@ paymentSchema.methods.toPlatform = function toPlatform(platformSlug) {
     ...(this.customerEmail ? { customerEmail: this.customerEmail } : {}),
     ...(this.paymentLink ? { paymentLink: String(this.paymentLink) } : {}),
     status: this.status,
-    receipt: this.receipt || null,
-    mpesaReceipt: this.receipt || null,
+    receipt: this.mpesaReceipt,
+    mpesaReceipt: this.mpesaReceipt,
     resultCode: this.resultCode ?? null,
     message: this.message,
     metadata: this.metadata || {},
@@ -133,8 +137,8 @@ paymentSchema.methods.toAdminRow = function toAdminRow() {
     ...(this.customerName ? { customerName: this.customerName } : {}),
     ...(this.customerEmail ? { customerEmail: this.customerEmail } : {}),
     status: this.status,
-    receipt: this.receipt || null,
-    mpesaReceipt: this.receipt || null,
+    receipt: this.mpesaReceipt,
+    mpesaReceipt: this.mpesaReceipt,
     message: this.message,
     createdAt: this.createdAt,
     paidAt: this.paidAt || null,

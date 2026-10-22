@@ -46,6 +46,19 @@ describe('M-Pesa confirmation codes', () => {
     assert.equal(payment.toAdminRow().mpesaReceipt, 'UA42HD1234');
   });
 
+  test('uses a retained successful callback receipt when a paid payment lacks a top-level receipt', () => {
+    const payment = new Payment({
+      reference: 'link-example',
+      phone: '254712345678',
+      amount: 100,
+      status: 'paid',
+      callback: { resultCode: 0, receipt: 'QGH123ABC' },
+    });
+
+    assert.equal(payment.toPlatform('demo').receipt, 'QGH123ABC');
+    assert.equal(payment.toAdminRow().mpesaReceipt, 'QGH123ABC');
+  });
+
   test('payment links do not request a customer-entered reference', () => {
     const link = new PaymentLink({
       title: 'Ticket',

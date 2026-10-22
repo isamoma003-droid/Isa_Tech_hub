@@ -159,11 +159,12 @@ export async function markPaid(payment, { receipt, paidAmount, source, note }) {
       }
       const link = await PaymentLink.findByIdAndUpdate(updated.paymentLink, update);
       if (link && updated.customerEmail) {
-        const details = updated.receipt ? `\nM-Pesa confirmation code: ${updated.receipt}` : '';
+        const receipt = updated.mpesaReceipt;
+        const receiptDetails = receipt ? `\nM-Pesa confirmation code (receipt): ${receipt}` : '';
         await sendMail({
           to: updated.customerEmail,
           subject: `Payment received by ${updated.description || 'IsaPay'}`,
-          text: `Hello${updated.customerName ? ` ${updated.customerName}` : ''},\n\nYour payment of KES ${updated.paidAmount ?? updated.amount} has been received.${details}\nReference: ${updated.reference}\n`,
+          text: `Hello${updated.customerName ? ` ${updated.customerName}` : ''},\n\nYour payment of KES ${updated.paidAmount ?? updated.amount} has been received.${receiptDetails}\nReference: ${updated.reference}\n`,
           html: emailTemplate({
             preheader: `Your payment of KES ${updated.paidAmount ?? updated.amount} was received.`,
             title: 'Payment received',
@@ -172,7 +173,7 @@ export async function markPaid(payment, { receipt, paidAmount, source, note }) {
             details: [
               { label: 'Amount received', value: `KES ${updated.paidAmount ?? updated.amount}` },
               { label: 'Reference', value: updated.reference },
-              ...(updated.receipt ? [{ label: 'M-Pesa confirmation code', value: updated.receipt }] : []),
+              ...(receipt ? [{ label: 'M-Pesa confirmation code (receipt)', value: receipt }] : []),
             ],
             closing: `Payment processed securely by IsaPay for ${updated.description || 'the merchant'}.`,
           }),
@@ -200,10 +201,11 @@ export async function markPaid(payment, { receipt, paidAmount, source, note }) {
       if (updated) {
         await enqueuePaymentEvent(updated, 'payment.paid');
         if (updated.paymentLink && updated.customerEmail) {
+          const receipt = updated.mpesaReceipt;
           await sendMail({
             to: updated.customerEmail,
             subject: 'M-Pesa confirmation code for your payment',
-            text: `Hello${updated.customerName ? ` ${updated.customerName}` : ''},\n\nYour payment has been confirmed. M-Pesa confirmation code: ${updated.receipt}\n`,
+            text: `Hello${updated.customerName ? ` ${updated.customerName}` : ''},\n\nYour payment has been confirmed. M-Pesa confirmation code (receipt): ${receipt}\n`,
             html: emailTemplate({
               preheader: 'Your M-Pesa confirmation code is available.',
               title: 'Payment confirmation code',
@@ -211,7 +213,7 @@ export async function markPaid(payment, { receipt, paidAmount, source, note }) {
               paragraphs: ['Safaricom has provided the confirmation code for your payment.'],
               details: [
                 { label: 'Amount received', value: `KES ${updated.paidAmount ?? updated.amount}` },
-                { label: 'M-Pesa confirmation code', value: updated.receipt },
+                { label: 'M-Pesa confirmation code (receipt)', value: receipt },
               ],
               closing: `Payment processed securely by IsaPay for ${updated.description || 'the merchant'}.`,
             }),
@@ -280,7 +282,7 @@ export async function handleCallback(till, result, onReceived = () => {}) {
     return { outcome: 'unknown_request' };
   }
 
-  await Payment.updateOne(
+  const receivedPayment = await Payment.findOneAndUpdate(
     { _id: payment._id },
     {
       $set: {
@@ -291,11 +293,22 @@ export async function handleCallback(till, result, onReceived = () => {}) {
         data: { resultCode: result.resultCode, receipt: result.receipt, amount: result.amount },
       }),
     },
+    { returnDocument: 'after' },
   );
   onReceived();
 
   if (result.resultCode !== 0) {
     return markFailed(payment, { resultCode: result.resultCode, resultDesc: result.resultDesc, source: 'callback' });
+  }
+  // A status query may have settled this payment before Safaricom's callback arrived. Its
+  // successful status is already verified, so attach the late callback receipt without another
+  // status query (which may be unavailable or no longer report success).
+  if (
+    receivedPayment?.status === 'paid' &&
+    result.receipt &&
+    (result.amount === undefined || Math.round(result.amount) === Math.round(receivedPayment.amount))
+  ) {
+    return markPaid(receivedPayment, { receipt: result.receipt, paidAmount: result.amount, source: 'callback' });
   }
 
   let check;

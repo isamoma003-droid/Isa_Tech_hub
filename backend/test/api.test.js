@@ -370,9 +370,12 @@ describe('ISA Tech Hub API', { skip: !uri && 'set MONGODB_URI_TEST to run the AP
     assert.equal(payment.status, 'paid');
     assert.equal(payment.receipt, undefined);
 
+    const queriesBeforeLateCallback = daraja.queries.length;
+    daraja.answers.delete(id);
     await callback(callbackBody(id, { amount: 150, receipt: 'TJ1LOST001' }));
     payment = await Payment.findById(body.payment.id);
     assert.equal(payment.receipt, 'TJ1LOST001');
+    assert.equal(daraja.queries.length, queriesBeforeLateCallback, 'a late callback fills the receipt without another status query');
     assert.equal(await WebhookDelivery.countDocuments({ payment: payment._id }), 1, 'no second payment.paid');
   });
 
