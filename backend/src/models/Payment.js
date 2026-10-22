@@ -48,6 +48,10 @@ const paymentSchema = new Schema(
     resultDesc: String,
     paidAt: Date,
     failedAt: Date,
+    receiptEmailQueuedAt: Date,
+    receiptEmailSentAt: Date,
+    receiptEmailNextAttemptAt: Date,
+    receiptEmailAttempts: { type: Number, default: 0 },
     // Safaricom's callback, kept until Safaricom's own status check agrees with it.
     callback: {
       resultCode: Number,

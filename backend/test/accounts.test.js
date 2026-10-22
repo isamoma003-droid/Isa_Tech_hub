@@ -422,7 +422,7 @@ describe('Accounts', { skip: !uri && 'set MONGODB_URI_TEST to run the API tests'
     const payment = await Payment.findById(started.body.payment.id);
     assert.match(payment.reference, /^link-/);
     await markPaid(payment, { paidAmount: 300, source: 'sweep' });
-    assert.equal(mailTo('payer@duka.test').length, 1, 'the payment confirmation is sent when status polling confirms payment');
+    assert.equal(mailTo('payer@duka.test').length, 0, 'wait to email until the M-Pesa receipt is available');
     await markPaid(payment, { receipt: 'LINK123456', paidAmount: 300, source: 'callback' });
     const status = await request('GET', `/api/checkout/${link.slug}/payments/${payment.id}`);
     assert.equal(status.body.payment.mpesaReceipt, 'LINK123456');
@@ -436,10 +436,9 @@ describe('Accounts', { skip: !uri && 'set MONGODB_URI_TEST to run the API tests'
     assert.equal((await api('DELETE', `/payment-links/${link.id}`, adminToken)).status, 204);
     const remainingLinks = await api('GET', '/payment-links', adminToken);
     assert.ok(!remainingLinks.body.paymentLinks.some((item) => item.id === link.id));
-    assert.match(mailTo('payer@duka.test')[0].subject, /Payment received/);
-    assert.match(mailTo('payer@duka.test')[0].html, /Payment received/);
-    const receiptEmail = mailTo('payer@duka.test')[1];
-    assert.match(receiptEmail.subject, /confirmation code/);
+    assert.equal(mailTo('payer@duka.test').length, 1, 'send one complete receipt email after receipt arrives');
+    const receiptEmail = mailTo('payer@duka.test')[0];
+    assert.match(receiptEmail.subject, /Payment received/);
     assert.match(receiptEmail.text, /M-Pesa confirmation code \(receipt\): LINK123456/);
     assert.match(receiptEmail.html, /M-Pesa confirmation code \(receipt\)/);
     assert.match(receiptEmail.html, /LINK123456/);

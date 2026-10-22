@@ -1,6 +1,6 @@
 import { env } from '../config/env.js';
 import { closeMonth } from './billing.js';
-import { sweepPendingPayments } from './payments.js';
+import { deliverReceiptEmails, sweepPendingPayments } from './payments.js';
 import { deliverDueWebhooks } from './webhooks.js';
 
 // Runs inside the API process. Safe with several servers: every payment transition and every
@@ -15,6 +15,10 @@ export function startWorkers() {
     every(env.sweepEveryMs, 'Payment sweep', async () => {
       const summary = await sweepPendingPayments();
       if (summary.scanned) console.log('Payment sweep:', summary);
+    }),
+    every(30_000, 'Payment receipt emails', async () => {
+      const summary = await deliverReceiptEmails();
+      if (summary.scanned) console.log('Payment receipt emails:', summary);
     }),
     every(env.webhookEveryMs, 'Webhook delivery', () => deliverDueWebhooks()),
     // Last month's invoices, written once each; checking hourly catches the turn of the month.

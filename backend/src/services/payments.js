@@ -18,7 +18,7 @@ import { Till } from '../models/Till.js';
 import { HttpError } from '../utils/httpError.js';
 import { DarajaError, stkPush, stkQuery } from './daraja.js';
 import { audit } from './audit.js';
-import { sendMail } from './mailer.js';
+import { mailEnabled, sendMail } from './mailer.js';
 import { emailTemplate } from './emailTemplate.js';
 import { enqueuePaymentEvent } from './webhooks.js';
 
@@ -32,6 +32,7 @@ export const GIVE_UP_MS = 10 * 60_000;
 // A push that never got a CheckoutRequestID (the server stopped mid-request) is failed after this.
 const ORPHAN_MS = 2 * 60_000;
 const MAX_EVENTS = 50;
+const RECEIPT_EMAIL_RETRY_MS = 30_000;
 
 const pushEvent = (type, source, extra = {}) => ({
   $push: { events: { $each: [{ at: new Date(), type, source, ...extra }], $slice: -MAX_EVENTS } },
@@ -130,7 +131,10 @@ export async function markPaid(payment, { receipt, paidAmount, source, note }) {
     resultCode: 0,
     resultDesc: mismatch ? `M-Pesa reported KES ${paidAmount}, expected KES ${payment.amount}` : 'Payment received',
   };
-  if (receipt) set.receipt = receipt;
+  if (receipt) {
+    set.receipt = receipt;
+    if (payment.paymentLink && payment.customerEmail) set.receiptEmailQueuedAt = now;
+  }
 
   const apply = (fields, eventNote) =>
     Payment.findOneAndUpdate(
@@ -146,6 +150,7 @@ export async function markPaid(payment, { receipt, paidAmount, source, note }) {
     if (!isDuplicateKey(err)) throw err;
     // The receipt is already on another payment: never count one M-Pesa transaction twice.
     delete set.receipt;
+    delete set.receiptEmailQueuedAt;
     updated = await apply({ ...set, status: 'disputed', resultDesc: `Receipt ${receipt} is already recorded on another payment` }, note);
   }
 
@@ -158,27 +163,7 @@ export async function markPaid(payment, { receipt, paidAmount, source, note }) {
         update.$unset = { checkoutLock: 1 };
       }
       const link = await PaymentLink.findByIdAndUpdate(updated.paymentLink, update);
-      if (link && updated.customerEmail) {
-        const receipt = updated.mpesaReceipt;
-        const receiptDetails = receipt ? `\nM-Pesa confirmation code (receipt): ${receipt}` : '';
-        await sendMail({
-          to: updated.customerEmail,
-          subject: `Payment received by ${updated.description || 'IsaPay'}`,
-          text: `Hello${updated.customerName ? ` ${updated.customerName}` : ''},\n\nYour payment of KES ${updated.paidAmount ?? updated.amount} has been received.${receiptDetails}\nReference: ${updated.reference}\n`,
-          html: emailTemplate({
-            preheader: `Your payment of KES ${updated.paidAmount ?? updated.amount} was received.`,
-            title: 'Payment received',
-            greeting: `Hello${updated.customerName ? ` ${updated.customerName}` : ''},`,
-            paragraphs: ['Your M-Pesa payment has been confirmed. Thank you.'],
-            details: [
-              { label: 'Amount received', value: `KES ${updated.paidAmount ?? updated.amount}` },
-              { label: 'Reference', value: updated.reference },
-              ...(receipt ? [{ label: 'M-Pesa confirmation code (receipt)', value: receipt }] : []),
-            ],
-            closing: `Payment processed securely by IsaPay for ${updated.description || 'the merchant'}.`,
-          }),
-        });
-      }
+      if (link && updated.customerEmail && updated.receipt) await deliverReceiptEmail(updated._id);
     }
     await enqueuePaymentEvent(updated, updated.status === 'paid' ? 'payment.paid' : 'payment.disputed');
     return { outcome: updated.status, payment: updated };
@@ -190,7 +175,12 @@ export async function markPaid(payment, { receipt, paidAmount, source, note }) {
     try {
       const result = await Payment.updateOne(
         { _id: payment._id, status: 'paid', receipt: { $exists: false } },
-        { $set: { receipt } },
+        {
+          $set: {
+            receipt,
+            ...(payment.paymentLink && payment.customerEmail ? { receiptEmailQueuedAt: new Date() } : {}),
+          },
+        },
       );
       receiptAdded = result.modifiedCount > 0;
     } catch (err) {
@@ -200,29 +190,86 @@ export async function markPaid(payment, { receipt, paidAmount, source, note }) {
       const updated = await Payment.findById(payment._id);
       if (updated) {
         await enqueuePaymentEvent(updated, 'payment.paid');
-        if (updated.paymentLink && updated.customerEmail) {
-          const receipt = updated.mpesaReceipt;
-          await sendMail({
-            to: updated.customerEmail,
-            subject: 'M-Pesa confirmation code for your payment',
-            text: `Hello${updated.customerName ? ` ${updated.customerName}` : ''},\n\nYour payment has been confirmed. M-Pesa confirmation code (receipt): ${receipt}\n`,
-            html: emailTemplate({
-              preheader: 'Your M-Pesa confirmation code is available.',
-              title: 'Payment confirmation code',
-              greeting: `Hello${updated.customerName ? ` ${updated.customerName}` : ''},`,
-              paragraphs: ['Safaricom has provided the confirmation code for your payment.'],
-              details: [
-                { label: 'Amount received', value: `KES ${updated.paidAmount ?? updated.amount}` },
-                { label: 'M-Pesa confirmation code (receipt)', value: receipt },
-              ],
-              closing: `Payment processed securely by IsaPay for ${updated.description || 'the merchant'}.`,
-            }),
-          });
-        }
+        if (updated.paymentLink && updated.customerEmail) await deliverReceiptEmail(updated._id);
       }
     }
   }
   return { outcome: 'unchanged', payment: (await Payment.findById(payment._id)) || payment };
+}
+
+async function deliverReceiptEmail(paymentId) {
+  if (!mailEnabled()) return false;
+  const now = new Date();
+  const eligible = {
+    _id: paymentId,
+    status: 'paid',
+    paymentLink: { $exists: true },
+    customerEmail: { $type: 'string' },
+    receipt: { $type: 'string' },
+    receiptEmailQueuedAt: { $exists: true },
+    receiptEmailSentAt: { $exists: false },
+    $or: [{ receiptEmailNextAttemptAt: { $exists: false } }, { receiptEmailNextAttemptAt: { $lte: now } }],
+  };
+  const payment = await Payment.findOneAndUpdate(
+    eligible,
+    { $set: { receiptEmailNextAttemptAt: new Date(now.getTime() + 60_000) }, $inc: { receiptEmailAttempts: 1 } },
+    { returnDocument: 'after' },
+  );
+  if (!payment) return false;
+
+  const receipt = payment.receipt;
+  const sent = await sendMail({
+    to: payment.customerEmail,
+    subject: `Payment received by ${payment.description || 'IsaPay'}`,
+    text: `Hello${payment.customerName ? ` ${payment.customerName}` : ''},\n\nYour M-Pesa payment of KES ${payment.paidAmount ?? payment.amount} has been confirmed.\nM-Pesa confirmation code (receipt): ${receipt}\nReference: ${payment.reference}\n`,
+    html: emailTemplate({
+      preheader: `Your payment of KES ${payment.paidAmount ?? payment.amount} was received.`,
+      title: 'Payment received',
+      greeting: `Hello${payment.customerName ? ` ${payment.customerName}` : ''},`,
+      paragraphs: ['Your M-Pesa payment has been confirmed. Thank you.'],
+      details: [
+        { label: 'Amount received', value: `KES ${payment.paidAmount ?? payment.amount}` },
+        { label: 'Reference', value: payment.reference },
+        { label: 'M-Pesa confirmation code (receipt)', value: receipt },
+      ],
+      closing: `Payment processed securely by IsaPay for ${payment.description || 'the merchant'}.`,
+    }),
+  });
+  if (sent) {
+    await Payment.updateOne(
+      { _id: payment._id, receiptEmailSentAt: { $exists: false } },
+      { $set: { receiptEmailSentAt: new Date() }, $unset: { receiptEmailNextAttemptAt: 1 } },
+    );
+    return true;
+  }
+  const retryMs = Math.min(15 * 60_000, RECEIPT_EMAIL_RETRY_MS * 2 ** Math.min(payment.receiptEmailAttempts - 1, 5));
+  await Payment.updateOne(
+    { _id: payment._id, receiptEmailSentAt: { $exists: false } },
+    { $set: { receiptEmailNextAttemptAt: new Date(Date.now() + retryMs) } },
+  );
+  return false;
+}
+
+export async function deliverReceiptEmails({ limit = 50 } = {}) {
+  if (!mailEnabled()) return { scanned: 0, sent: 0 };
+  const now = new Date();
+  const due = await Payment.find({
+    status: 'paid',
+    paymentLink: { $exists: true },
+    customerEmail: { $type: 'string' },
+    receipt: { $type: 'string' },
+    receiptEmailQueuedAt: { $exists: true },
+    receiptEmailSentAt: { $exists: false },
+    $or: [{ receiptEmailNextAttemptAt: { $exists: false } }, { receiptEmailNextAttemptAt: { $lte: now } }],
+  })
+    .sort({ paidAt: 1 })
+    .limit(limit)
+    .select('_id');
+  let sent = 0;
+  for (const payment of due) {
+    if (await deliverReceiptEmail(payment._id)) sent += 1;
+  }
+  return { scanned: due.length, sent };
 }
 
 // An IsaPay subscription invoice paid by M-Pesa prompt (services/billing.js).
